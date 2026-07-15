@@ -1,13 +1,26 @@
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder, TextChannel } from "discord.js";
 
-export async function sendLog(channel:any, title:string, message:string) {
+export async function sendGameEvent(
+    channel: TextChannel,
+    event: string,
+    player: string
+) {
 
     const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(message)
+        .setTitle("🎮 Roblox Event")
+        .addFields(
+            {
+                name: "Event",
+                value: event
+            },
+            {
+                name: "Player",
+                value: player
+            }
+        )
         .setTimestamp();
 
     await channel.send({
-        embeds:[embed]
+        embeds: [embed]
     });
 }

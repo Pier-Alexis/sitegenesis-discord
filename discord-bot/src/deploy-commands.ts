@@ -3,10 +3,12 @@ import { config } from "./config.js";
 
 import { data as ping } from "./commands/ping.js";
 import { data as testlog } from "./commands/testlog.ts";
+import { data as testevent } from "./commands/testevent.js";
 
 const commands = [
     ping.toJSON(),
-    testlog.toJSON()
+    testlog.toJSON(),
+    testevent.toJSON()
 ];
 
 const rest = new REST({

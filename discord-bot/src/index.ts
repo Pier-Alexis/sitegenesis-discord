@@ -8,6 +8,7 @@ import { config } from "./config.js";
 
 import * as ping from "./commands/ping.js";
 import * as testlog from "./commands/testlog.js";
+import * as testevent from "./commands/testevent.js";
 
 
 const client = new Client({
@@ -26,6 +27,10 @@ const commands = new Collection<string, Command>();
 
 commands.set(ping.data.name, ping as Command);
 commands.set(testlog.data.name, testlog as Command);
+commands.set(
+    testevent.data.name,
+    testevent
+);
 
 
 client.once("clientReady", () => {
