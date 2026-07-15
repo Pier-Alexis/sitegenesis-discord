@@ -1,0 +1,32 @@
+roblox-discord-bridge/
+│_____
+│    ├── discord-bot/
+│    ├── src/
+│    │   ├── commands/
+│    │   │   ├── ping.ts
+│    │       │   └── status.ts
+│    │       ├── events/
+│    │       │   ├── ready.ts
+│    │       │   └── interactionCreate.ts
+│    │       ├── config.ts
+│    │       ├── client.ts
+│    │       └── index.ts
+│    ├── package.json
+│    ├── tsconfig.json
+│    └── .env
+├── backend/
+│   ├── api/
+│   ├── routes/
+│   ├── middleware/
+│   ├── services/
+│   └── database/
+│
+├── simulator/
+│   └── fake-events/       (test)
+│
+├── shared/
+│   ├── config/
+│   └── types/
+│
+└── roblox/
+    └── (later)
