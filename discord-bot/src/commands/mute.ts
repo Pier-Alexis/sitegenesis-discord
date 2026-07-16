@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, TimestampStyles, time } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
+import { recordModerationEvent } from "../services/moderationLog.js";
 
 export const data = new SlashCommandBuilder()
     .setName("mute")
@@ -88,6 +89,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         "User Timed Out",
         `Timed out by ${interaction.user.tag} for ${minutes} minute(s) for: ${reason}. Ends ${formattedUntil}`
     );
+
+    await recordModerationEvent(guild, {
+        type: "mute",
+        guildId: guild.id,
+        guildName: guild.name,
+        targetUserId: targetUser.id,
+        targetUserTag: targetUser.tag,
+        moderatorId: interaction.user.id,
+        moderatorTag: interaction.user.tag,
+        reason: `Muted for ${minutes} minute(s): ${reason}`
+    });
 
     await interaction.reply({
         content: `✅ Timed out ${targetUser.tag} for ${minutes} minute(s) for: ${reason}`

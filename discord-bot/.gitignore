@@ -1,9 +1,6 @@
 # Environment secrets
 .env
 
-# Node
-node_modules/
-
 # TypeScript
 dist/
 

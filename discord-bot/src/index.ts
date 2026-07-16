@@ -5,6 +5,14 @@ import {
     GatewayIntentBits
 } from "discord.js";
 
+process.on("uncaughtException", error => {
+    console.error("Uncaught exception:", error);
+});
+
+process.on("unhandledRejection", reason => {
+    console.error("Unhandled rejection:", reason);
+});
+
 import { config } from "./config.js";
 
 import { commandModules } from "./commands/registry.js";

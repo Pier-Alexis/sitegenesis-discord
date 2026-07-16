@@ -1,5 +1,6 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
+import { recordModerationEvent } from "../services/moderationLog.js";
 
 export const data = new SlashCommandBuilder()
     .setName("unmute")
@@ -59,6 +60,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             "User Unmuted",
             `Timeout removed by ${interaction.user.tag} for: ${reason}`
         );
+
+        await recordModerationEvent(guild, {
+            type: "unmute",
+            guildId: guild.id,
+            guildName: guild.name,
+            targetUserId: targetUser.id,
+            targetUserTag: targetUser.tag,
+            moderatorId: interaction.user.id,
+            moderatorTag: interaction.user.tag,
+            reason
+        });
 
         await interaction.reply({
             content: `✅ Removed the timeout from ${targetUser.tag}`

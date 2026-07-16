@@ -28,11 +28,36 @@ export async function sendGameEvent(
     });
 }
 
-async function ensureUserLogForum(guild: Guild): Promise<ForumChannel> {
-    const existing = guild.channels.cache.find(
-        channel => channel.type === ChannelType.GuildForum && channel.name === LOG_CHANNEL_NAME
-    ) as ForumChannel | undefined;
+export async function getModerationLogForums(guild: Guild): Promise<ForumChannel[]> {
+    await guild.channels.fetch();
 
+    const forumChannels = [...guild.channels.cache.values()].filter(
+        channel => channel.type === ChannelType.GuildForum
+    ) as ForumChannel[];
+
+    if (!forumChannels.length) {
+        return [];
+    }
+
+    const configuredName = (config.channels.moderationLogs || LOG_CHANNEL_NAME).toLowerCase();
+    const exactMatches = forumChannels.filter(channel => channel.name.toLowerCase() === configuredName || channel.id === configuredName);
+    if (exactMatches.length) {
+        return exactMatches;
+    }
+
+    const logMatches = forumChannels.filter(channel =>
+        channel.name.toLowerCase().includes("log") || channel.name.toLowerCase().includes("mod")
+    );
+
+    if (logMatches.length) {
+        return logMatches;
+    }
+
+    return forumChannels;
+}
+
+export async function ensureModerationLogForum(guild: Guild): Promise<ForumChannel> {
+    const existing = (await getModerationLogForums(guild))[0];
     if (existing) {
         return existing;
     }
@@ -44,11 +69,52 @@ async function ensureUserLogForum(guild: Guild): Promise<ForumChannel> {
     }) as Promise<ForumChannel>;
 }
 
-async function ensureUserThread(guild: Guild, user: User): Promise<ThreadChannel> {
-    const forumChannel = await ensureUserLogForum(guild);
+export function buildUserThreadName(user: Pick<User, "tag" | "username" | "id">): string {
+    const usernameBase = user.tag.includes("#") ? user.tag.split("#")[0] : user.tag;
+    return `User ${usernameBase}`;
+}
+
+export async function findUserThread(guild: Guild, user: Pick<User, "tag" | "username" | "id">): Promise<ThreadChannel | null> {
+    const forums = await getModerationLogForums(guild);
+
+    const candidates = [
+        buildUserThreadName(user),
+        `User ${user.username}`,
+        `User ${user.tag}`,
+        `User ${user.tag.split("#")[0]}`
+    ].filter(Boolean);
+
+    for (const forum of forums) {
+        await forum.threads.fetch();
+        const matchingThread = forum.threads.cache.find(thread => {
+            const name = thread.name?.toLowerCase() ?? "";
+            const nameMatches = candidates.some(candidate => {
+                const normalizedCandidate = candidate.toLowerCase();
+                return name === normalizedCandidate || name.includes(normalizedCandidate) || normalizedCandidate.includes(name);
+            });
+
+            if (nameMatches) {
+                return true;
+            }
+
+            const starterMessage = thread.messages.cache.first();
+            const starterText = starterMessage?.content?.toLowerCase() ?? "";
+            return starterText.includes(user.id) || starterText.includes(user.tag.toLowerCase()) || starterText.includes(user.username.toLowerCase());
+        });
+
+        if (matchingThread) {
+            return matchingThread;
+        }
+    }
+
+    return null;
+}
+
+export async function ensureUserThread(guild: Guild, user: User): Promise<ThreadChannel> {
+    const forumChannel = await ensureModerationLogForum(guild);
     await forumChannel.threads.fetch();
 
-    const threadName = `User ${user.tag}`;
+    const threadName = buildUserThreadName(user);
     const existingThread = forumChannel.threads.cache.find(thread => thread.name === threadName);
 
     if (existingThread) {
