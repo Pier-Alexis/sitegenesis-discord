@@ -2,21 +2,21 @@ import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCo
 import { logUserEvent } from "../services/logger.js";
 
 export const data = new SlashCommandBuilder()
-    .setName("unmute")
-    .setDescription("Remove a timeout from a member")
+    .setName("softban")
+    .setDescription("Temporarily ban and immediately unban a member")
     .addUserOption(option =>
         option
             .setName("user")
-            .setDescription("The member to untimeout")
+            .setDescription("The member to softban")
             .setRequired(true)
     )
     .addStringOption(option =>
         option
             .setName("reason")
-            .setDescription("Reason for removing the timeout")
+            .setDescription("Reason for the softban")
             .setRequired(false)
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
     .setDMPermission(false);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -40,32 +40,35 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const targetUser = interaction.options.getUser("user", true);
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
-    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
-
-    if (!targetMember) {
+    if (targetUser.id === interaction.user.id) {
         await interaction.reply({
-            content: "⚠️ I could not find that member.",
+            content: "⚠️ You cannot softban yourself.",
             flags: MessageFlags.Ephemeral
         });
         return;
     }
 
     try {
-        await targetMember.timeout(null, reason);
+        await guild.members.ban(targetUser, {
+            deleteMessageSeconds: 60,
+            reason
+        });
+
+        await guild.members.unban(targetUser, "Softban complete");
 
         await logUserEvent(
             guild,
             targetUser,
-            "User Unmuted",
-            `Timeout removed by ${interaction.user.tag} for: ${reason}`
+            "User Softbanned",
+            `Softbanned by ${interaction.user.tag} for: ${reason}`
         );
 
         await interaction.reply({
-            content: `✅ Removed the timeout from ${targetUser.tag}`
+            content: `✅ Softbanned ${targetUser.tag} for: ${reason}`
         });
     } catch (error) {
         await interaction.reply({
-            content: "⚠️ I could not remove that timeout.",
+            content: "⚠️ I could not softban that user.",
             flags: MessageFlags.Ephemeral
         });
     }

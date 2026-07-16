@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, PermissionFlagsBits, SlashCommandBuilder, TimestampStyles, time } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, TimestampStyles, time } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
 
 export const data = new SlashCommandBuilder()
@@ -31,7 +31,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.inGuild()) {
         await interaction.reply({
             content: "⚠️ This command can only be used in a server.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const guild = interaction.guild;
+    if (!guild) {
+        await interaction.reply({
+            content: "⚠️ I could not access this server information.",
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -43,17 +52,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (targetUser.id === interaction.user.id) {
         await interaction.reply({
             content: "⚠️ You cannot timeout yourself.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
 
     if (!targetMember) {
         await interaction.reply({
             content: "⚠️ I could not find that member.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -61,7 +70,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!targetMember.moderatable) {
         await interaction.reply({
             content: "⚠️ I cannot timeout that member.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -74,7 +83,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const formattedUntil = time(timeoutUntil, TimestampStyles.RelativeTime);
 
     await logUserEvent(
-        interaction.guild,
+        guild,
         targetUser,
         "User Timed Out",
         `Timed out by ${interaction.user.tag} for ${minutes} minute(s) for: ${reason}. Ends ${formattedUntil}`

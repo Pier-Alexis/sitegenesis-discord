@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
 
 export const data = new SlashCommandBuilder()
@@ -23,7 +23,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.inGuild()) {
         await interaction.reply({
             content: "⚠️ This command can only be used in a server.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const guild = interaction.guild;
+    if (!guild) {
+        await interaction.reply({
+            content: "⚠️ I could not access this server information.",
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -32,10 +41,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
     try {
-        await interaction.guild.members.unban(targetUser, reason);
+        await guild.members.unban(targetUser, reason);
 
         await logUserEvent(
-            interaction.guild,
+            guild,
             targetUser,
             "User Unbanned",
             `Unbanned by ${interaction.user.tag} for: ${reason}`
@@ -47,7 +56,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     } catch (error) {
         await interaction.reply({
             content: "⚠️ I could not unban that user. Make sure they are actually banned.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
     }
 }

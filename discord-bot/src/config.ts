@@ -15,3 +15,5 @@ export const config = {
         moderationLogs: process.env.MODERATION_LOGS_CHANNEL ?? "user-logs"
     }
 };
+
+export default config;

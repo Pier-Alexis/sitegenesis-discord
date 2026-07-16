@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, ForumChannel, Guild, Message, PartialMessage, TextChannel, ThreadChannel, User } from "discord.js";
+import { ChannelType, EmbedBuilder, ForumChannel, Guild, TextChannel, ThreadChannel, User, type Message, type PartialMessage } from "discord.js";
 import { config } from "../config.js";
 
 const LOG_CHANNEL_NAME = config.channels.moderationLogs || "user-logs";

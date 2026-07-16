@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
 
 export const data = new SlashCommandBuilder()
@@ -23,7 +23,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.inGuild()) {
         await interaction.reply({
             content: "⚠️ This command can only be used in a server.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const guild = interaction.guild;
+    if (!guild) {
+        await interaction.reply({
+            content: "⚠️ I could not access this server information.",
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
@@ -34,25 +43,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (targetUser.id === interaction.user.id) {
         await interaction.reply({
             content: "⚠️ You cannot ban yourself.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
 
     if (targetMember && !targetMember.bannable) {
         await interaction.reply({
             content: "⚠️ I cannot ban that user.",
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    await interaction.guild.members.ban(targetUser, { reason });
+    await guild.members.ban(targetUser, { reason });
 
     await logUserEvent(
-        interaction.guild,
+        guild,
         targetUser,
         "User Banned",
         `Banned by ${interaction.user.tag} for: ${reason}`
