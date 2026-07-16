@@ -1,7 +1,8 @@
 import {
     Client,
-    GatewayIntentBits,
-    Collection
+    Collection,
+    Events,
+    GatewayIntentBits
 } from "discord.js";
 
 import { config } from "./config.js";
@@ -9,11 +10,18 @@ import { config } from "./config.js";
 import * as ping from "./commands/ping.js";
 import * as testlog from "./commands/testlog.js";
 import * as testevent from "./commands/testevent.js";
+import * as ban from "./commands/ban.js";
+import * as unban from "./commands/unban.js";
+import { logMessageEvent, logUserEvent } from "./services/logger.js";
 
 
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -31,16 +39,102 @@ commands.set(
     testevent.data.name,
     testevent
 );
+commands.set(ban.data.name, ban as Command);
+commands.set(unban.data.name, unban as Command);
 
 
-client.once("clientReady", () => {
+client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user?.tag}`);
 
     client.user?.setActivity("Site Genesis Development");
 });
 
+client.on(Events.GuildMemberAdd, async member => {
+    await logUserEvent(member.guild, member.user, "User Joined", `${member.user.tag} joined the server.`);
+});
 
-client.on("interactionCreate", async interaction => {
+client.on(Events.GuildMemberRemove, async member => {
+    await logUserEvent(member.guild, member.user, "User Left", `${member.user.tag} left the server.`);
+});
+
+client.on(Events.GuildBanAdd, async banEntry => {
+    await logUserEvent(banEntry.guild, banEntry.user, "User Banned", "The user was banned from the server.");
+});
+
+client.on(Events.GuildBanRemove, async banEntry => {
+    await logUserEvent(banEntry.guild, banEntry.user, "User Unbanned", "The user was unbanned from the server.");
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    const nicknameChanged = oldMember.nickname !== newMember.nickname;
+    const oldRoleIds = new Set(oldMember.roles.cache.keys());
+    const newRoleIds = new Set(newMember.roles.cache.keys());
+    const rolesChanged = oldRoleIds.size !== newRoleIds.size || [...oldRoleIds].some(id => !newRoleIds.has(id));
+
+    if (!nicknameChanged && !rolesChanged) {
+        return;
+    }
+
+    const changes: string[] = [];
+
+    if (nicknameChanged) {
+        changes.push(`Nickname: ${oldMember.nickname ?? "None"} -> ${newMember.nickname ?? "None"}`);
+    }
+
+    if (rolesChanged) {
+        const addedRoles = [...newRoleIds].filter(id => !oldRoleIds.has(id));
+        const removedRoles = [...oldRoleIds].filter(id => !newRoleIds.has(id));
+        if (addedRoles.length) {
+            changes.push(`Added roles: ${addedRoles.map(id => `<@&${id}>`).join(", ")}`);
+        }
+        if (removedRoles.length) {
+            changes.push(`Removed roles: ${removedRoles.map(id => `<@&${id}>`).join(", ")}`);
+        }
+    }
+
+    await logUserEvent(newMember.guild, newMember.user, "User Updated", changes.join("\n"));
+});
+
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+    const member = newState.member;
+    if (!member || member.user.bot) {
+        return;
+    }
+
+    if (!oldState.channelId && newState.channelId) {
+        await logUserEvent(newState.guild, member.user, "Voice Joined", `Joined voice channel: ${newState.channel?.name ?? "unknown"}`);
+    } else if (oldState.channelId && !newState.channelId) {
+        await logUserEvent(newState.guild, member.user, "Voice Left", `Left voice channel: ${oldState.channel?.name ?? "unknown"}`);
+    } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+        await logUserEvent(newState.guild, member.user, "Voice Moved", `Moved from ${oldState.channel?.name ?? "unknown"} to ${newState.channel?.name ?? "unknown"}`);
+    }
+});
+
+client.on(Events.MessageCreate, async message => {
+    if (!message.guild || message.author.bot) {
+        return;
+    }
+
+    await logMessageEvent(message.guild, message.author, "Message Created", message, `Content: ${message.content || "(empty)"}`);
+});
+
+client.on(Events.MessageDelete, async message => {
+    if (!message.guild || !message.author || message.author.bot) {
+        return;
+    }
+
+    await logMessageEvent(message.guild, message.author, "Message Deleted", message, `Content: ${message.content || "(empty)"}`);
+});
+
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+    if (!newMessage.guild || newMessage.author?.bot || oldMessage.content === newMessage.content) {
+        return;
+    }
+
+    await logMessageEvent(newMessage.guild, newMessage.author, "Message Edited", newMessage, `Before: ${oldMessage.content || "(empty)"}\nAfter: ${newMessage.content || "(empty)"}`);
+});
+
+client.on(Events.InteractionCreate, async interaction => {
 
     if (!interaction.isChatInputCommand())
         return;

@@ -12,6 +12,6 @@ export const config = {
 
     channels: {
         gameEvents: "game-events",
-        moderationLogs: "moderation-logs"
+        moderationLogs: process.env.MODERATION_LOGS_CHANNEL ?? "user-logs"
     }
 };
