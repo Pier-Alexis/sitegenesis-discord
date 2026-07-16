@@ -7,11 +7,7 @@ import {
 
 import { config } from "./config.js";
 
-import * as ping from "./commands/ping.js";
-import * as testlog from "./commands/testlog.js";
-import * as testevent from "./commands/testevent.js";
-import * as ban from "./commands/ban.js";
-import * as unban from "./commands/unban.js";
+import { commandModules } from "./commands/registry.js";
 import { logMessageEvent, logUserEvent } from "./services/logger.js";
 
 
@@ -33,14 +29,9 @@ type Command = {
 
 const commands = new Collection<string, Command>();
 
-commands.set(ping.data.name, ping as Command);
-commands.set(testlog.data.name, testlog as Command);
-commands.set(
-    testevent.data.name,
-    testevent
-);
-commands.set(ban.data.name, ban as Command);
-commands.set(unban.data.name, unban as Command);
+for (const commandModule of commandModules) {
+    commands.set(commandModule.data.name, commandModule as Command);
+}
 
 
 client.once(Events.ClientReady, () => {
@@ -108,14 +99,6 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
         await logUserEvent(newState.guild, member.user, "Voice Moved", `Moved from ${oldState.channel?.name ?? "unknown"} to ${newState.channel?.name ?? "unknown"}`);
     }
-});
-
-client.on(Events.MessageCreate, async message => {
-    if (!message.guild || message.author.bot) {
-        return;
-    }
-
-    await logMessageEvent(message.guild, message.author, "Message Created", message, `Content: ${message.content || "(empty)"}`);
 });
 
 client.on(Events.MessageDelete, async message => {

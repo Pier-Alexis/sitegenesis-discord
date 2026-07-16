@@ -1,19 +1,6 @@
 import { REST, Routes } from "discord.js";
 import { config } from "./config.js";
-
-import { data as ping } from "./commands/ping.js";
-import { data as testlog } from "./commands/testlog.ts";
-import { data as testevent } from "./commands/testevent.js";
-import { data as ban } from "./commands/ban.js";
-import { data as unban } from "./commands/unban.js";
-
-const commands = [
-    ping.toJSON(),
-    testlog.toJSON(),
-    testevent.toJSON(),
-    ban.toJSON(),
-    unban.toJSON()
-];
+import { commandData } from "./commands/registry.js";
 
 const rest = new REST({
     version: "10"
@@ -23,17 +10,30 @@ async function deploy() {
     try {
         console.log("Deploying commands...");
 
-        await rest.put(
-            Routes.applicationGuildCommands(
-                config.clientId,
-                config.guildId
-            ),
-            {
-                body: commands
-            }
-        );
+        const deployGuildOnly = process.env.DEPLOY_GUILD_ONLY === "true";
 
-        console.log("Commands deployed!");
+        if (deployGuildOnly && config.guildId) {
+            await rest.put(
+                Routes.applicationGuildCommands(
+                    config.clientId,
+                    config.guildId
+                ),
+                {
+                    body: commandData
+                }
+            );
+
+            console.log(`Commands deployed to guild ${config.guildId}`);
+        } else {
+            await rest.put(
+                Routes.applicationCommands(config.clientId),
+                {
+                    body: commandData
+                }
+            );
+
+            console.log("Commands deployed globally!");
+        }
     } catch (error) {
         console.error(error);
     }
