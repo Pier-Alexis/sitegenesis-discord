@@ -19,7 +19,7 @@ Place this in ServerScriptService as a script.
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
-local API_URL = "http://duckdnsip:3000/api/roblox/moderation/pending"
+local API_URL = "http://sitegenesis.ddns.net:3000/api/roblox/moderation/pending"
 local API_KEY = "your-secret-key"
 
 local function getPendingActions()
@@ -54,7 +54,7 @@ end
 local function markProcessed(id)
 	local success, response = pcall(function()
 		local request = HttpService:RequestAsync({
-			Url = "http://duckdnsip:3000/api/roblox/moderation/" .. id .. "/processed",
+			Url = "http://sitegenesis.ddns.net:3000/api/roblox/moderation/" .. id .. "/processed",
 			Method = "POST",
 			Headers = {
 				["x-api-key"] = API_KEY,
