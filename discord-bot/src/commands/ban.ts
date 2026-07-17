@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { logUserEvent } from "../services/logger.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
+import { buildModerationPayload, forwardModerationToBackend } from "../services/robloxBridge.js";
 
 export const data = new SlashCommandBuilder()
     .setName("ban")
@@ -78,6 +79,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         moderatorTag: interaction.user.tag,
         reason
     });
+
+    const payload = buildModerationPayload({
+        action: "ban",
+        targetUserId: targetUser.id,
+        targetUsername: targetUser.username,
+        reason,
+        moderator: interaction.user.tag
+    });
+
+    try {
+        await forwardModerationToBackend(payload);
+    } catch (error) {
+        console.error("Failed to forward moderation to backend", error);
+    }
 
     await interaction.reply({
         content: `✅ Banned ${targetUser.tag} for: ${reason}`

@@ -17,6 +17,7 @@ import { config } from "./config.js";
 
 import { commandModules } from "./commands/registry.js";
 import { logMessageEvent, logUserEvent } from "./services/logger.js";
+import { handleCommandError } from "./services/commandErrorHandler.js";
 
 
 const client = new Client({
@@ -139,8 +140,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await command.execute(interaction);
     }
     catch(error) {
-        console.error(error);
-        await interaction.reply("❌ Error executing command.");
+        await handleCommandError(interaction, error);
     }
 
 });
