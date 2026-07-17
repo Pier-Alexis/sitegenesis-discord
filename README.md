@@ -83,3 +83,7 @@ Responsible for:
 * Discord communicates only with the backend.
 * The backend is responsible for exchanging information between both platforms.
 * A database can be added to keep logs, moderation history, or other persistent information.
+
+
+To use : npm start in -/sitegenesis-discord/discord-bot
+to start api : npm start in -/sitegenesis-discord/discord-bot/api
