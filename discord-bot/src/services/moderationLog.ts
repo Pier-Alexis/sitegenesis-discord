@@ -72,6 +72,29 @@ function isNewModerationEmbed(message: Message<boolean>): boolean {
     );
 }
 
+function isLegacyModerationEmbed(message: Message<boolean>): boolean {
+    const embed = message.embeds[0];
+    if (!embed) {
+        return false;
+    }
+
+    const fieldNames = embed.fields.map(field => field.name.toLowerCase());
+    const title = embed.title?.toLowerCase() ?? "";
+    const hasModerationFields = [
+        "type",
+        "target user",
+        "target id",
+        "moderator",
+        "reason",
+        "guild"
+    ].some(field => fieldNames.includes(field));
+
+    const isActivityEmbed = fieldNames.includes("user") || fieldNames.includes("details");
+    const isNewFormat = isNewModerationEmbed(message);
+
+    return hasModerationFields && !isActivityEmbed && !isNewFormat && title.includes("mod") || title.includes("ban") || title.includes("warn") || title.includes("mute") || title.includes("unban") || title.includes("unmute");
+}
+
 function getEventTypeFromMessage(message: Message<boolean>): ModerationEventType | null {
     const embedTitle = message.embeds[0]?.title ?? "";
     const fieldValue = getFieldValue(message, "Type");
@@ -91,7 +114,7 @@ async function cleanupLegacyModerationMessages(thread: ThreadChannel) {
     const legacyMessages = [...thread.messages.cache.values()].filter(message =>
         message.author.id === botId &&
         message.embeds.length > 0 &&
-        !isNewModerationEmbed(message)
+        isLegacyModerationEmbed(message)
     );
 
     await Promise.all(legacyMessages.map(message => message.delete().catch(() => undefined)));
