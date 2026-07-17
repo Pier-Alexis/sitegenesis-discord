@@ -1,0 +1,39 @@
+# Node modules ALWAYS RUN npm install WHEN A NEW PULL
+node_modules/
+
+# Environment variables (secrets)
+.env
+
+# Logs
+logs/
+*.log
+
+# Database files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Build files
+dist/
+build/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# PM2
+.pm2/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test coverage
+coverage/

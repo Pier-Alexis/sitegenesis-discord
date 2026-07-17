@@ -18,7 +18,7 @@ import { config } from "./config.js";
 import { commandModules } from "./commands/registry.js";
 import { logMessageEvent, logUserEvent } from "./services/logger.js";
 import { handleCommandError } from "./services/commandErrorHandler.js";
-
+import { startApi } from "./api";
 
 const client = new Client({
     intents: [
@@ -45,6 +45,8 @@ for (const commandModule of commandModules) {
 
 client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user?.tag}`);
+
+    startApi(client);
 
     client.user?.setActivity("Site Genesis Development");
 });
