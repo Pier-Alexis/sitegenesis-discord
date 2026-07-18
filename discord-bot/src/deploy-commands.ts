@@ -1,6 +1,11 @@
 import { REST, Routes } from "discord.js";
-import { config } from "./config.js";
+import { config, isDiscordTokenConfigured } from "./config.js";
 import { commandData } from "./commands/registry.js";
+
+if (!isDiscordTokenConfigured(config.token)) {
+    console.error("Discord bot token is missing or invalid. Set TOKEN in your .env file to a real bot token.");
+    process.exit(1);
+}
 
 const rest = new REST({
     version: "10"

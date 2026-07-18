@@ -18,7 +18,7 @@ import { config } from "./config.js";
 import { commandModules } from "./commands/registry.js";
 import { logMessageEvent, logUserEvent } from "./services/logger.js";
 import { handleCommandError } from "./services/commandErrorHandler.js";
-import { startApi } from "./api";
+import { startApi } from "./api.js";
 
 const client = new Client({
     intents: [

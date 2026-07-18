@@ -92,4 +92,4 @@ end
 
 ## Important note
 
-This example kicks the player if they are already in the server. For a full production setup, you should also store bans in a DataStore so they persist across server restarts.
+This example kicks the player if they are already in the server. For a full production setup, you should also store bans in a DataStore so they persist across server restarts. (added database for that)
