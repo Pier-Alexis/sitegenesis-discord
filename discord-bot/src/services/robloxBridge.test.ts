@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildModerationPayload, buildPlayerSearchSummary, formatPlayerListEntry } from "./robloxBridge.js";
+import { buildApiHeaders, buildModerationPayload, buildPlayerSearchSummary, formatPlayerListEntry } from "./robloxBridge.js";
 
 test("buildModerationPayload includes the action, target, and moderator details", () => {
     const payload = buildModerationPayload({
@@ -46,4 +46,13 @@ test("buildPlayerSearchSummary includes every requested player detail", () => {
     assert.match(summary, /Roblox User ID: 42/);
     assert.match(summary, /Groups: Admin, Tester/);
     assert.match(summary, /Current Team: Alpha/);
+});
+
+test("buildApiHeaders includes the configured API key when present", () => {
+    process.env.API_KEY = "shared-secret";
+
+    assert.deepEqual(buildApiHeaders(), {
+        "Content-Type": "application/json",
+        "x-api-key": "shared-secret"
+    });
 });

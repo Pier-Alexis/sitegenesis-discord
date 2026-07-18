@@ -19,6 +19,19 @@ export type RobloxPlayerSearchResult = RobloxPlayerEntry & {
     groups: string[];
 };
 
+export function buildApiHeaders() {
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+    };
+
+    const apiKey = process.env.API_KEY;
+    if (apiKey) {
+        headers["x-api-key"] = apiKey;
+    }
+
+    return headers;
+}
+
 export function buildModerationPayload(input: {
     action: RobloxModerationAction;
     targetUserId: string;
@@ -55,9 +68,7 @@ export async function forwardModerationToBackend(payload: RobloxModerationPayloa
     const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
     const response = await fetch(`${baseUrl}/roblox/moderation`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: buildApiHeaders(),
         body: JSON.stringify(payload)
     });
 
@@ -78,9 +89,7 @@ export async function forwardCaseToBackend(payload: {
     const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
     const response = await fetch(`${baseUrl}/cases`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: buildApiHeaders(),
         body: JSON.stringify(payload)
     });
 

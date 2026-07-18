@@ -1,1 +1,1 @@
-export { default } from "../utils/database";
+export { default } from "../utils/database.js";
