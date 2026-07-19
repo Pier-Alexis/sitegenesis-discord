@@ -381,10 +381,6 @@ export function startApi(client: Client) {
                     );
                 }
 
-                metaLines.push(
-                    `Reported by: ${event.username}`
-                );
-
                 const details =
                     metaLines.join("\n");
 
