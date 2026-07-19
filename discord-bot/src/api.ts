@@ -94,6 +94,26 @@ export function startApi(client: Client) {
                 }
 
                 // ==========================================
+                // SERVER EMPTY VALIDATION
+                // ==========================================
+
+                if (
+                    event.type ===
+                    "serverEmpty" &&
+                    (
+                        !event.serverId ||
+                        !event.serverName
+                    )
+                ) {
+
+                    return res.status(400).json({
+                        success: false,
+                        message:
+                            "Invalid serverEmpty event payload"
+                    });
+                }
+
+                // ==========================================
                 // PLAYER EVENT VALIDATION
                 //
                 // Supported:
@@ -143,24 +163,34 @@ export function startApi(client: Client) {
                     });
                 }
 
-               // ==========================================
+                // ==========================================
                 // RESOLVE AUTHORIZED DISCORD GUILD
                 // ==========================================
 
                 if (!config.guildId) {
-                    console.error("GUILD_ID is not configured.");
+
+                    console.error(
+                        "GUILD_ID is not configured."
+                    );
 
                     return res.status(500).json({
                         success: false,
-                        message: "GUILD_ID is not configured"
+                        message:
+                            "GUILD_ID is not configured"
                     });
                 }
 
                 let guild;
 
                 try {
-                    guild = await client.guilds.fetch(config.guildId);
+
+                    guild =
+                        await client.guilds.fetch(
+                            config.guildId
+                        );
+
                 } catch (error) {
+
                     console.error(
                         `Failed to fetch configured Discord guild ${config.guildId}:`,
                         error
@@ -168,14 +198,17 @@ export function startApi(client: Client) {
 
                     return res.status(500).json({
                         success: false,
-                        message: "Configured Discord guild not found"
+                        message:
+                            "Configured Discord guild not found"
                     });
                 }
 
                 if (!guild) {
+
                     return res.status(500).json({
                         success: false,
-                        message: "Configured Discord guild is unavailable"
+                        message:
+                            "Configured Discord guild is unavailable"
                     });
                 }
 
@@ -195,8 +228,11 @@ export function startApi(client: Client) {
                     const categoryName =
                         `${event.serverName} - ${event.serverId}`;
 
+                    const archivedCategoryName =
+                        `(ARCHIVE) ${categoryName}`;
+
                     // ------------------------------------------
-                    // CHECK EXISTING CATEGORY
+                    // CHECK NORMAL CATEGORY
                     // ------------------------------------------
 
                     const existingCategory =
@@ -215,7 +251,6 @@ export function startApi(client: Client) {
                             `${categoryName}`
                         );
 
-                        // Make sure the forum exists
                         await ensureServerLogForum(
                             guild,
                             event.serverId,
@@ -233,14 +268,62 @@ export function startApi(client: Client) {
                     }
 
                     // ------------------------------------------
+                    // CHECK ARCHIVED CATEGORY
+                    //
+                    // If the same Roblox server starts again,
+                    // restore the archived category.
+                    // ------------------------------------------
+
+                    const archivedCategory =
+                        guild.channels.cache.find(
+                            channel =>
+                                channel.type ===
+                                    ChannelType.GuildCategory &&
+                                channel.name ===
+                                    archivedCategoryName
+                        );
+
+                    if (archivedCategory) {
+
+                        await archivedCategory.setName(
+                            categoryName,
+                            "Roblox server became active again"
+                        );
+
+                        console.log(
+                            `Restored archived Roblox server category: ` +
+                            `${categoryName}`
+                        );
+
+                        await ensureServerLogForum(
+                            guild,
+                            event.serverId,
+                            event.serverName
+                        );
+
+                        return res.json({
+                            success: true,
+                            created: false,
+                            restored: true,
+                            categoryId:
+                                archivedCategory.id,
+                            message:
+                                "Archived category restored"
+                        });
+                    }
+
+                    // ------------------------------------------
                     // CREATE SERVER CATEGORY
                     // ------------------------------------------
 
                     const category =
                         await guild.channels.create({
-                            name: categoryName,
+                            name:
+                                categoryName,
+
                             type:
                                 ChannelType.GuildCategory,
+
                             reason:
                                 `Created for Roblox server ` +
                                 `${event.serverId}`
@@ -277,6 +360,84 @@ export function startApi(client: Client) {
                             category.id,
                         forumId:
                             forum.id
+                    });
+                }
+
+                // ==========================================
+                // SERVER EMPTY
+                //
+                // Roblox informs the API that there are
+                // currently zero players in the server.
+                //
+                // The Discord category is renamed:
+                //
+                // ServerName - ServerID
+                //
+                // ->
+                //
+                // (ARCHIVE) ServerName - ServerID
+                // ==========================================
+
+                if (
+                    event.type ===
+                    "serverEmpty"
+                ) {
+
+                    const categoryName =
+                        `${event.serverName} - ${event.serverId}`;
+
+                    const archivedCategoryName =
+                        `(ARCHIVE) ${categoryName}`;
+
+                    // ------------------------------------------
+                    // FIND ACTIVE CATEGORY
+                    // ------------------------------------------
+
+                    const category =
+                        guild.channels.cache.find(
+                            channel =>
+                                channel.type ===
+                                    ChannelType.GuildCategory &&
+                                channel.name ===
+                                    categoryName
+                        );
+
+                    if (!category) {
+
+                        console.log(
+                            `Could not find active category ` +
+                            `to archive: ${categoryName}`
+                        );
+
+                        return res.json({
+                            success: true,
+                            archived: false,
+                            message:
+                                "Category not found"
+                        });
+                    }
+
+                    // ------------------------------------------
+                    // ARCHIVE CATEGORY
+                    // ------------------------------------------
+
+                    await category.setName(
+                        archivedCategoryName,
+                        "Roblox server became empty"
+                    );
+
+                    console.log(
+                        `Archived Roblox server category: ` +
+                        `${archivedCategoryName}`
+                    );
+
+                    return res.json({
+                        success: true,
+                        archived: true,
+                        categoryId:
+                            category.id,
+                        categoryName:
+                            archivedCategoryName
                     });
                 }
 
@@ -386,14 +547,6 @@ export function startApi(client: Client) {
 
                 // ==========================================
                 // GLOBAL USER-LOGS
-                //
-                // This is the permanent global history.
-                //
-                // user-logs Forum
-                // └── User Player (ID)
-                //     ├── Player Joined
-                //     ├── Team Changed
-                //     └── Player Left
                 // ==========================================
 
                 await logUserEvent(
@@ -405,13 +558,6 @@ export function startApi(client: Client) {
 
                 // ==========================================
                 // SERVER-SPECIFIC USER-LOGS
-                //
-                // Category
-                // └── user-logs Forum
-                //     └── User Player (ID)
-                //         ├── Player Joined
-                //         ├── Team Changed
-                //         └── Player Left
                 // ==========================================
 
                 if (
