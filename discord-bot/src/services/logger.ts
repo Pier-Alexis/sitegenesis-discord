@@ -200,7 +200,7 @@ export async function ensurePlayerChannel(
 
     await guild.channels.fetch();
 
-    const categoryName = `${serverName} - ${serverId}`;
+    const channelName = `${username}-${userId}`.toLowerCase();
 
     const category = guild.channels.cache.find(
         channel =>
