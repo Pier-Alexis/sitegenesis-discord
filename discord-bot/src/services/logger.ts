@@ -358,3 +358,54 @@ export async function findPlayerChannel(
 
     return playerChannel ?? null;
 }
+
+export async function logPlayerServerEvent(
+    guild: Guild,
+    username: string,
+    userId: string,
+    serverId: string,
+    serverName: string,
+    event: string,
+    details: string
+): Promise<void> {
+
+    try {
+        const channel = await findPlayerChannel(
+            guild,
+            username,
+            userId,
+            serverId,
+            serverName
+        );
+
+        if (!channel) {
+            console.log(
+                `Player channel not found for ${username} (${userId})`
+            );
+            return;
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📝 ${event}`)
+            .setDescription(details)
+            .addFields({
+                name: "Player",
+                value: `${username} (${userId})`
+            })
+            .setTimestamp();
+
+        await channel.send({
+            embeds: [embed]
+        });
+
+        console.log(
+            `Logged "${event}" for ${username} in ${channel.name}`
+        );
+
+    } catch (error) {
+        console.error(
+            `Failed to log player server event for ${username}:`,
+            error
+        );
+    }
+}
