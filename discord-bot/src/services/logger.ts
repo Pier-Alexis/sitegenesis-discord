@@ -271,7 +271,6 @@ export async function deletePlayerChannel(
 
     const channelName = `${username}-${userId}`.toLowerCase();
 
-    // Search directly inside the category
     const playerChannel = category.children.cache.find(
         channel =>
             channel.type === ChannelType.GuildText &&
@@ -291,17 +290,43 @@ export async function deletePlayerChannel(
         return;
     }
 
-    try {
-        await playerChannel.delete(
-            `Player ${username} (${userId}) left Roblox server`
+    // Delete the player's temporary channel
+    await playerChannel.delete(
+        `Player ${username} (${userId}) left Roblox server`
+    );
+
+    console.log(
+        `Deleted player channel: ${channelName}`
+    );
+
+    // Refresh the guild channels after deleting the player channel
+    await guild.channels.fetch();
+
+    // Find the category again
+    const updatedCategory = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildCategory &&
+            channel.name === categoryName
+    ) as CategoryChannel | undefined;
+
+    if (!updatedCategory) {
+        return;
+    }
+
+    // Check if there are any channels left in the category
+    const remainingChannels = updatedCategory.children.cache.size;
+
+    if (remainingChannels === 0) {
+        await updatedCategory.delete(
+            `No players remaining in Roblox server ${serverId}`
         );
+
         console.log(
-            `Successfully deleted player channel: ${channelName} in category ${categoryName}`
+            `Deleted empty server category: ${categoryName}`
         );
-    } catch (err) {
+    } else {
         console.log(
-            `Failed to delete player channel: ${channelName} in category ${categoryName}`,
-            err
+            `Server category ${categoryName} still has ${remainingChannels} player channel(s)`
         );
     }
 }
