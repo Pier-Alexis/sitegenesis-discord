@@ -1,14 +1,29 @@
-import { ChannelType, EmbedBuilder, ForumChannel, Guild, TextChannel, ThreadChannel, User, CategoryChannel, type Message, type PartialMessage } from "discord.js";
+import {
+    ChannelType,
+    EmbedBuilder,
+    ForumChannel,
+    Guild,
+    TextChannel,
+    ThreadChannel,
+    User,
+    CategoryChannel,
+    type Message,
+    type PartialMessage
+} from "discord.js";
+
 import { config } from "../config.js";
 
-const LOG_CHANNEL_NAME = config.channels.moderationLogs || "user-logs";
+const LOG_CHANNEL_NAME =
+    config.channels.moderationLogs || "user-logs";
 
+/**
+ * Send a generic Roblox game event to a text channel.
+ */
 export async function sendGameEvent(
     channel: TextChannel,
     event: string,
     player: string
 ) {
-
     const embed = new EmbedBuilder()
         .setTitle("🎮 Roblox Event")
         .addFields(
@@ -28,25 +43,46 @@ export async function sendGameEvent(
     });
 }
 
-export async function getModerationLogForums(guild: Guild): Promise<ForumChannel[]> {
+/**
+ * Find all global moderation/user log forums.
+ */
+export async function getModerationLogForums(
+    guild: Guild
+): Promise<ForumChannel[]> {
+
     await guild.channels.fetch();
 
-    const forumChannels = [...guild.channels.cache.values()].filter(
-        channel => channel.type === ChannelType.GuildForum
+    const forumChannels = [
+        ...guild.channels.cache.values()
+    ].filter(
+        channel =>
+            channel.type === ChannelType.GuildForum
     ) as ForumChannel[];
 
     if (!forumChannels.length) {
         return [];
     }
 
-    const configuredName = (config.channels.moderationLogs || LOG_CHANNEL_NAME).toLowerCase();
-    const exactMatches = forumChannels.filter(channel => channel.name.toLowerCase() === configuredName || channel.id === configuredName);
+    const configuredName =
+        (
+            config.channels.moderationLogs ||
+            LOG_CHANNEL_NAME
+        ).toLowerCase();
+
+    const exactMatches = forumChannels.filter(
+        channel =>
+            channel.name.toLowerCase() === configuredName ||
+            channel.id === configuredName
+    );
+
     if (exactMatches.length) {
         return exactMatches;
     }
 
-    const logMatches = forumChannels.filter(channel =>
-        channel.name.toLowerCase().includes("log") || channel.name.toLowerCase().includes("mod")
+    const logMatches = forumChannels.filter(
+        channel =>
+            channel.name.toLowerCase().includes("log") ||
+            channel.name.toLowerCase().includes("mod")
     );
 
     if (logMatches.length) {
@@ -56,152 +92,53 @@ export async function getModerationLogForums(guild: Guild): Promise<ForumChannel
     return forumChannels;
 }
 
-export async function ensureModerationLogForum(guild: Guild): Promise<ForumChannel> {
-    const existing = (await getModerationLogForums(guild))[0];
+/**
+ * Ensure that the global moderation/user-logs forum exists.
+ *
+ * This forum is independent from Roblox server categories.
+ */
+export async function ensureModerationLogForum(
+    guild: Guild
+): Promise<ForumChannel> {
+
+    const existing =
+        (await getModerationLogForums(guild))[0];
+
     if (existing) {
         return existing;
     }
 
-    return guild.channels.create({
+    const forum = await guild.channels.create({
         name: LOG_CHANNEL_NAME,
         type: ChannelType.GuildForum,
-        reason: "Create a forum channel for user activity logs"
-    }) as Promise<ForumChannel>;
-}
-
-export function buildUserThreadName(user: Pick<User, "tag" | "username" | "id">): string {
-    const usernameBase = user.tag.includes("#") ? user.tag.split("#")[0] : user.tag;
-    return `User ${usernameBase} (${user.id})`;
-}
-
-export async function findUserThread(guild: Guild, user: Pick<User, "tag" | "username" | "id">): Promise<ThreadChannel | null> {
-    const forums = await getModerationLogForums(guild);
-
-    const candidates = [
-        buildUserThreadName(user),
-        `User ${user.username} (${user.id})`,
-        `User ${user.tag} (${user.id})`,
-        `User ${user.tag.split("#")[0]} (${user.id})`,
-        `User ${user.username}`,
-        `User ${user.tag}`,
-        `User ${user.tag.split("#")[0]}`
-    ].filter(Boolean);
-
-    for (const forum of forums) {
-        await forum.threads.fetch();
-        const matchingThread = forum.threads.cache.find(thread => {
-            const name = thread.name?.toLowerCase() ?? "";
-            const nameMatches = candidates.some(candidate => {
-                const normalizedCandidate = candidate.toLowerCase();
-                return name === normalizedCandidate || name.includes(normalizedCandidate) || normalizedCandidate.includes(name);
-            });
-
-            if (nameMatches) {
-                return true;
-            }
-
-            const starterMessage = thread.messages.cache.first();
-            const starterText = starterMessage?.content?.toLowerCase() ?? "";
-            return starterText.includes(user.id) || starterText.includes(user.tag.toLowerCase()) || starterText.includes(user.username.toLowerCase());
-        });
-
-        if (matchingThread) {
-            return matchingThread;
-        }
-    }
-
-    return null;
-}
-
-export async function ensureUserThread(guild: Guild, user: User): Promise<ThreadChannel> {
-    const forumChannel = await ensureModerationLogForum(guild);
-    await forumChannel.threads.fetch();
-
-    const threadName = buildUserThreadName(user);
-    const existingThread = forumChannel.threads.cache.find(thread => thread.name === threadName);
-
-    if (existingThread) {
-        return existingThread;
-    }
-
-    return forumChannel.threads.create({
-        name: threadName,
-        message: {
-            content: `📌 Activity log for ${user.tag} (${user.id})`
-        }
+        reason:
+            "Create a forum channel for user activity logs"
     });
+
+    return forum as ForumChannel;
 }
 
-export async function logUserEvent(guild: Guild, user: User, event: string, details: string) {
-    try {
-        const thread = await ensureUserThread(guild, user);
-
-        const embed = new EmbedBuilder()
-            .setTitle(`📝 ${event}`)
-            .setColor(0x5865F2)
-            .addFields(
-                {
-                    name: "User",
-                    value: `${user.tag} (${user.id})`
-                },
-                {
-                    name: "Details",
-                    value: details
-                }
-            )
-            .setTimestamp();
-
-        await thread.send({ embeds: [embed] });
-    } catch (error) {
-        console.error("Failed to log user event:", error);
-    }
-}
-
-export async function logMessageEvent(guild: Guild, user: User, event: string, message: Message<boolean> | PartialMessage, details?: string) {
-    try {
-        const thread = await ensureUserThread(guild, user);
-
-        const embed = new EmbedBuilder()
-            .setTitle(`💬 ${event}`)
-            .setColor(0x57F287)
-            .addFields(
-                {
-                    name: "User",
-                    value: `${user.tag} (${user.id})`
-                },
-                {
-                    name: "Channel",
-                    value: `<#${message.channelId}>`
-                },
-                {
-                    name: "Message ID",
-                    value: message.id
-                },
-                {
-                    name: "Details",
-                    value: details ?? "No additional details"
-                }
-            )
-            .setTimestamp();
-
-        await thread.send({ embeds: [embed] });
-    } catch (error) {
-        console.error("Failed to log message event:", error);
-    }
-}
-
-export async function ensurePlayerChannel(
+/**
+ * Find or create the user-logs forum inside a Roblox
+ * server category.
+ *
+ * Structure:
+ *
+ * Server Category
+ * └── user-logs (Forum)
+ *     ├── User Player1 (123)
+ *     └── User Player2 (456)
+ */
+export async function ensureServerLogForum(
     guild: Guild,
-    username: string,
-    userId: string,
     serverId: string,
     serverName: string
-): Promise<TextChannel> {
+): Promise<ForumChannel> {
 
     await guild.channels.fetch();
 
-    const categoryName = `${serverName} - ${serverId}`;
-    const channelName = `${username}-${userId}`.toLowerCase();
+    const categoryName =
+        `${serverName} - ${serverId}`;
 
     const category = guild.channels.cache.find(
         channel =>
@@ -215,196 +152,388 @@ export async function ensurePlayerChannel(
         );
     }
 
-    const existingChannel = guild.channels.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildText &&
-            channel.parentId === category.id &&
-            channel.name === channelName
-    ) as TextChannel | undefined;
+    const forumName = "user-logs";
 
-    if (existingChannel) {
-        return existingChannel;
+    const existingForum =
+        category.children.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildForum &&
+                channel.name === forumName
+        ) as ForumChannel | undefined;
+
+    if (existingForum) {
+        return existingForum;
     }
 
-    const playerChannel = await guild.channels.create({
-        name: channelName,
-        type: ChannelType.GuildText,
+    const forum = await guild.channels.create({
+        name: forumName,
+        type: ChannelType.GuildForum,
         parent: category.id,
-        reason: `Player channel for ${username} (${userId})`
+        reason:
+            `User logs for Roblox server ${serverId}`
     });
 
     console.log(
-        `Created player channel "${channelName}" in category "${categoryName}" (${playerChannel.id})`
+        `Created server user-logs forum "${forum.name}" ` +
+        `in category "${categoryName}"`
     );
 
-    return playerChannel;
+    return forum as ForumChannel;
 }
 
+/**
+ * Build the thread name used for a player.
+ *
+ * Example:
+ * User PARikiBic (1943568858)
+ */
+export function buildUserThreadName(
+    user: Pick<User, "tag" | "username" | "id">
+): string {
 
-export async function deletePlayerChannel(
-    guild: Guild,
-    username: string,
-    userId: string,
-    serverId: string,
-    serverName: string
-): Promise<void> {
-    await guild.channels.fetch();
+    const usernameBase =
+        user.tag.includes("#")
+            ? user.tag.split("#")[0]
+            : user.tag;
 
-    const categoryName = `${serverName} - ${serverId}`;
-
-    const category = guild.channels.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildCategory &&
-            channel.name === categoryName
-    ) as CategoryChannel | undefined;
-
-    if (!category) {
-        console.log(
-            `Server category not found: ${categoryName}`
-        );
-        return;
-    }
-
-    const channelName = `${username}-${userId}`.toLowerCase();
-
-    const playerChannel = category.children.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildText &&
-            channel.name === channelName
-    ) as TextChannel | undefined;
-
-    if (!playerChannel) {
-        console.log(
-            `Player channel not found: ${channelName} in category ${categoryName}`
-        );
-
-        console.log(
-            "Channels currently in category:",
-            category.children.cache.map(channel => channel.name)
-        );
-
-        return;
-    }
-
-    // Delete the player's temporary channel
-    await playerChannel.delete(
-        `Player ${username} (${userId}) left Roblox server`
-    );
-
-    console.log(
-        `Deleted player channel: ${channelName}`
-    );
-
-    // Refresh the guild channels after deleting the player channel
-    await guild.channels.fetch();
-
-    // Find the category again
-    const updatedCategory = guild.channels.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildCategory &&
-            channel.name === categoryName
-    ) as CategoryChannel | undefined;
-
-    if (!updatedCategory) {
-        return;
-    }
-
-    // Check if there are any channels left in the category
-    const remainingChannels = updatedCategory.children.cache.size;
-
-    if (remainingChannels === 0) {
-        await updatedCategory.delete(
-            `No players remaining in Roblox server ${serverId}`
-        );
-
-        console.log(
-            `Deleted empty server category: ${categoryName}`
-        );
-    } else {
-        console.log(
-            `Server category ${categoryName} still has ${remainingChannels} player channel(s)`
-        );
-    }
+    return `User ${usernameBase} (${user.id})`;
 }
 
-export async function findPlayerChannel(
+/**
+ * Find a user thread inside the global moderation log forums.
+ */
+export async function findUserThread(
     guild: Guild,
-    username: string,
-    userId: string,
-    serverId: string,
-    serverName: string
-): Promise<TextChannel | null> {
+    user: Pick<User, "tag" | "username" | "id">
+): Promise<ThreadChannel | null> {
 
-    await guild.channels.fetch();
+    const forums =
+        await getModerationLogForums(guild);
 
-    const categoryName = `${serverName} - ${serverId}`;
-    const channelName = `${username}-${userId}`.toLowerCase();
+    const candidates = [
+        buildUserThreadName(user),
+        `User ${user.username} (${user.id})`,
+        `User ${user.tag} (${user.id})`,
+        `User ${user.tag.split("#")[0]} (${user.id})`,
+        `User ${user.username}`,
+        `User ${user.tag}`,
+        `User ${user.tag.split("#")[0]}`
+    ].filter(Boolean);
 
-    const category = guild.channels.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildCategory &&
-            channel.name === categoryName
-    ) as CategoryChannel | undefined;
+    for (const forum of forums) {
 
-    if (!category) {
-        return null;
+        await forum.threads.fetch();
+
+        const matchingThread =
+            forum.threads.cache.find(thread => {
+
+                const name =
+                    thread.name?.toLowerCase() ?? "";
+
+                const nameMatches =
+                    candidates.some(candidate => {
+
+                        const normalizedCandidate =
+                            candidate.toLowerCase();
+
+                        return (
+                            name === normalizedCandidate ||
+                            name.includes(normalizedCandidate) ||
+                            normalizedCandidate.includes(name)
+                        );
+                    });
+
+                if (nameMatches) {
+                    return true;
+                }
+
+                const starterMessage =
+                    thread.messages.cache.first();
+
+                const starterText =
+                    starterMessage?.content?.toLowerCase() ?? "";
+
+                return (
+                    starterText.includes(user.id) ||
+                    starterText.includes(
+                        user.tag.toLowerCase()
+                    ) ||
+                    starterText.includes(
+                        user.username.toLowerCase()
+                    )
+                );
+            });
+
+        if (matchingThread) {
+            return matchingThread;
+        }
     }
 
-    const playerChannel = category.children.cache.find(
-        channel =>
-            channel.type === ChannelType.GuildText &&
-            channel.name === channelName
-    ) as TextChannel | undefined;
-
-    return playerChannel ?? null;
+    return null;
 }
 
-export async function logPlayerServerEvent(
+/**
+ * Ensure a user thread exists in the global user-logs forum.
+ */
+export async function ensureUserThread(
     guild: Guild,
-    username: string,
-    userId: string,
-    serverId: string,
-    serverName: string,
+    user: User
+): Promise<ThreadChannel> {
+
+    const forumChannel =
+        await ensureModerationLogForum(guild);
+
+    await forumChannel.threads.fetch();
+
+    const threadName =
+        buildUserThreadName(user);
+
+    const existingThread =
+        forumChannel.threads.cache.find(
+            thread =>
+                thread.name === threadName
+        );
+
+    if (existingThread) {
+        return existingThread;
+    }
+
+    return forumChannel.threads.create({
+        name: threadName,
+        message: {
+            content:
+                `📌 Activity log for ${user.tag} (${user.id})`
+        }
+    });
+}
+
+/**
+ * Log an event in the global user-logs forum.
+ */
+export async function logUserEvent(
+    guild: Guild,
+    user: User,
     event: string,
     details: string
-): Promise<void> {
+) {
 
     try {
-        const channel = await findPlayerChannel(
+
+        const thread =
+            await ensureUserThread(
+                guild,
+                user
+            );
+
+        const embed =
+            new EmbedBuilder()
+                .setTitle(`📝 ${event}`)
+                .setColor(0x5865F2)
+                .addFields(
+                    {
+                        name: "User",
+                        value:
+                            `${user.tag} (${user.id})`
+                    },
+                    {
+                        name: "Details",
+                        value: details
+                    }
+                )
+                .setTimestamp();
+
+        await thread.send({
+            embeds: [embed]
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log user event:",
+            error
+        );
+    }
+}
+
+/**
+ * Log Discord message events in the global user thread.
+ */
+export async function logMessageEvent(
+    guild: Guild,
+    user: User,
+    event: string,
+    message: Message<boolean> | PartialMessage,
+    details?: string
+) {
+
+    try {
+
+        const thread =
+            await ensureUserThread(
+                guild,
+                user
+            );
+
+        const embed =
+            new EmbedBuilder()
+                .setTitle(`💬 ${event}`)
+                .setColor(0x57F287)
+                .addFields(
+                    {
+                        name: "User",
+                        value:
+                            `${user.tag} (${user.id})`
+                    },
+                    {
+                        name: "Channel",
+                        value:
+                            `<#${message.channelId}>`
+                    },
+                    {
+                        name: "Message ID",
+                        value: message.id
+                    },
+                    {
+                        name: "Details",
+                        value:
+                            details ??
+                            "No additional details"
+                    }
+                )
+                .setTimestamp();
+
+        await thread.send({
+            embeds: [embed]
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log message event:",
+            error
+        );
+    }
+}
+
+/**
+ * Ensure a user thread exists inside a specific forum.
+ *
+ * Used by server-specific user-logs forums.
+ */
+export async function ensureUserThreadInForum(
+    forum: ForumChannel,
+    user: User
+): Promise<ThreadChannel> {
+
+    await forum.threads.fetch();
+
+    const threadName =
+        buildUserThreadName(user);
+
+    const existingThread =
+        forum.threads.cache.find(
+            thread =>
+                thread.name === threadName
+        );
+
+    if (existingThread) {
+        return existingThread;
+    }
+
+    return forum.threads.create({
+        name: threadName,
+        message: {
+            content:
+                `📌 Activity log for ${user.tag} (${user.id})`
+        }
+    });
+}
+
+/**
+ * Ensure a player thread exists inside the user-logs
+ * forum of a specific Roblox server.
+ */
+export async function ensureServerUserThread(
+    guild: Guild,
+    user: User,
+    serverId: string,
+    serverName: string
+): Promise<ThreadChannel> {
+
+    const forum =
+        await ensureServerLogForum(
             guild,
-            username,
-            userId,
             serverId,
             serverName
         );
 
-        if (!channel) {
-            console.log(
-                `Player channel not found for ${username} (${userId})`
+    return ensureUserThreadInForum(
+        forum,
+        user
+    );
+}
+
+/**
+ * Log a Roblox player event inside:
+ *
+ * Category
+ * └── user-logs Forum
+ *     └── User PlayerName (UserId)
+ *
+ * This is used for:
+ * - Player Joined
+ * - Player Left
+ * - Team Changed
+ */
+export async function logServerUserEvent(
+    guild: Guild,
+    user: User,
+    event: string,
+    details: string,
+    serverId: string,
+    serverName: string
+) {
+
+    try {
+
+        const thread =
+            await ensureServerUserThread(
+                guild,
+                user,
+                serverId,
+                serverName
             );
-            return;
-        }
 
-        const embed = new EmbedBuilder()
-            .setTitle(`📝 ${event}`)
-            .setDescription(details)
-            .addFields({
-                name: "Player",
-                value: `${username} (${userId})`
-            })
-            .setTimestamp();
+        const embed =
+            new EmbedBuilder()
+                .setTitle(`📝 ${event}`)
+                .setColor(0x5865F2)
+                .addFields(
+                    {
+                        name: "User",
+                        value:
+                            `${user.tag} (${user.id})`
+                    },
+                    {
+                        name: "Details",
+                        value: details
+                    }
+                )
+                .setTimestamp();
 
-        await channel.send({
+        await thread.send({
             embeds: [embed]
         });
 
         console.log(
-            `Logged "${event}" for ${username} in ${channel.name}`
+            `Logged "${event}" for ${user.username} ` +
+            `in server ${serverName} (${serverId})`
         );
 
     } catch (error) {
+
         console.error(
-            `Failed to log player server event for ${username}:`,
+            "Failed to log server user event:",
             error
         );
     }
