@@ -8,6 +8,17 @@ router.post("/", async (req, res) => {
 
         console.log("Roblox event received:", event);
 
+        if (!event || typeof event !== "object") {
+            return res.status(400).json({ success: false, message: "Invalid payload" });
+        }
+
+        const { type, username } = event as { type?: string; username?: string };
+        const allowedTypes = new Set(["playerJoin", "playerLeave"]);
+
+        if (!type || !allowedTypes.has(type) || !username) {
+            return res.status(400).json({ success: false, message: "Invalid or missing fields: type and username required" });
+        }
+
         const response = await fetch("http://127.0.0.1:4000/events", {
             method: "POST",
             headers: {

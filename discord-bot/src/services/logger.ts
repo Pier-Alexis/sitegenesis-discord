@@ -71,7 +71,7 @@ export async function ensureModerationLogForum(guild: Guild): Promise<ForumChann
 
 export function buildUserThreadName(user: Pick<User, "tag" | "username" | "id">): string {
     const usernameBase = user.tag.includes("#") ? user.tag.split("#")[0] : user.tag;
-    return `User ${usernameBase}`;
+    return `User ${usernameBase} (${user.id})`;
 }
 
 export async function findUserThread(guild: Guild, user: Pick<User, "tag" | "username" | "id">): Promise<ThreadChannel | null> {
@@ -79,6 +79,9 @@ export async function findUserThread(guild: Guild, user: Pick<User, "tag" | "use
 
     const candidates = [
         buildUserThreadName(user),
+        `User ${user.username} (${user.id})`,
+        `User ${user.tag} (${user.id})`,
+        `User ${user.tag.split("#")[0]} (${user.id})`,
         `User ${user.username}`,
         `User ${user.tag}`,
         `User ${user.tag.split("#")[0]}`
