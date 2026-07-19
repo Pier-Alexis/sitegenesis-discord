@@ -32,7 +32,8 @@ router.post("/", async (req, res) => {
         const allowedTypes = new Set([
             "playerJoin",
             "playerLeave",
-            "serverCreated"
+            "serverCreated",
+            "teamChanged"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
