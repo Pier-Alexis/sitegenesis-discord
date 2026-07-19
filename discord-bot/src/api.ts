@@ -1,5 +1,5 @@
 import express from "express";
-import { Client } from "discord.js";
+import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
 import { logUserEvent } from "./services/logger.js";
@@ -27,30 +27,99 @@ export function startApi(client: Client) {
 
             console.log("Received an event:", event);
 
-            if (!event || typeof event !== "object" || !event.type || !event.username || !event.userId) {
+            // Basic event validation
+            if (!event || typeof event !== "object" || !event.type) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid event payload"
                 });
             }
 
+            // Validate player events
+            if (
+                (event.type === "playerJoin" || event.type === "playerLeave") &&
+                (!event.username || !event.userId)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid player event payload"
+                });
+            }
+
+            // Validate server creation events
+            if (
+                event.type === "serverCreated" &&
+                (!event.serverId || !event.serverName)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid serverCreated event payload"
+                });
+            }
+
             // Resolve guild
             let guild;
+
             if (config.guildId) {
                 try {
                     guild = await client.guilds.fetch(config.guildId);
                 } catch (err) {
-                    guild = client.guilds.cache.get(config.guildId!);
+                    guild = client.guilds.cache.get(config.guildId);
                 }
             }
 
             if (!guild) {
-                // fallback to first available guild
+                // Fallback to first available guild
                 guild = client.guilds.cache.values().next().value;
             }
 
             if (!guild) {
-                return res.status(500).json({ success: false, message: "Bot is not in any guild" });
+                return res.status(500).json({
+                    success: false,
+                    message: "Bot is not in any guild"
+                });
+            }
+
+            // Handle Roblox server creation
+            if (event.type === "serverCreated") {
+                const categoryName = `${event.serverName} - ${event.serverId}`;
+
+                // Check if the category already exists
+                const existingCategory = guild.channels.cache.find(
+                    channel =>
+                        channel.type === ChannelType.GuildCategory &&
+                        channel.name === categoryName
+                );
+
+                if (existingCategory) {
+                    console.log(
+                        `Category already exists: ${categoryName}`
+                    );
+
+                    return res.json({
+                        success: true,
+                        created: false,
+                        categoryId: existingCategory.id,
+                        message: "Category already exists"
+                    });
+                }
+
+                // Create the Discord category
+                const category = await guild.channels.create({
+                    name: categoryName,
+                    type: ChannelType.GuildCategory,
+                    reason: `Created for Roblox server ${event.serverId}`
+                });
+
+                console.log(
+                    `Created category "${category.name}" (${category.id}) for Roblox server ${event.serverId}`
+                );
+
+                return res.json({
+                    success: true,
+                    created: true,
+                    categoryId: category.id
+                });
             }
 
             // Build a lightweight User-like object for logger utilities
@@ -61,23 +130,50 @@ export function startApi(client: Client) {
             } as unknown) as User;
 
             const human = event.username;
-            const eventName = event.type === "playerJoin" ? "Player Joined" : event.type === "playerLeave" ? "Player Left" : `Event: ${event.type}`;
+
+            const eventName =
+                event.type === "playerJoin"
+                    ? "Player Joined"
+                    : event.type === "playerLeave"
+                        ? "Player Left"
+                        : `Event: ${event.type}`;
 
             const metaLines: string[] = [];
+
             metaLines.push(`Roblox username: ${event.username}`);
             metaLines.push(`Roblox ID: ${event.userId}`);
-            if (event.placeName) metaLines.push(`Place: ${event.placeName}`);
-            if (event.placeId) metaLines.push(`Place ID: ${event.placeId}`);
-            if (event.serverId) metaLines.push(`Server ID: ${event.serverId}`);
-            if (event.serverName) metaLines.push(`Server: ${event.serverName}`);
+
+            if (event.placeName) {
+                metaLines.push(`Place: ${event.placeName}`);
+            }
+
+            if (event.placeId) {
+                metaLines.push(`Place ID: ${event.placeId}`);
+            }
+
+            if (event.serverId) {
+                metaLines.push(`Server ID: ${event.serverId}`);
+            }
+
+            if (event.serverName) {
+                metaLines.push(`Server: ${event.serverName}`);
+            }
 
             metaLines.push(`Reported by: ${human}`);
 
             const details = metaLines.join("\n");
 
-            await logUserEvent(guild, robloxUser, eventName, details);
+            await logUserEvent(
+                guild,
+                robloxUser,
+                eventName,
+                details
+            );
 
-            res.json({ success: true });
+            res.json({
+                success: true
+            });
+
         } catch (error) {
             console.error(error);
 
