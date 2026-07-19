@@ -2,7 +2,11 @@ import express from "express";
 import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
-import { logUserEvent, ensurePlayerChannel, deletePlayerChannel, logPlayerServerEvent } from "./services/logger.js";
+import {
+    logUserEvent,
+    logServerUserEvent,
+    ensureServerLogForum
+} from "./services/logger.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -28,25 +32,18 @@ export function startApi(client: Client) {
             console.log("Received an event:", event);
 
             // Basic event validation
-            if (!event || typeof event !== "object" || !event.type) {
+            if (
+                !event ||
+                typeof event !== "object" ||
+                !event.type
+            ) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid event payload"
                 });
             }
 
-            // Validate player events
-            if (
-                (event.type === "playerJoin" || event.type === "playerLeave") &&
-                (!event.username || !event.userId)
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid player event payload"
-                });
-            }
-
-            // Validate server creation events
+            // Validate server creation event
             if (
                 event.type === "serverCreated" &&
                 (!event.serverId || !event.serverName)
@@ -57,17 +54,34 @@ export function startApi(client: Client) {
                 });
             }
 
+            // Validate player events
             if (
-                event.type === "teamChanged" &&
-                (!event.username ||
+                (
+                    event.type === "playerJoin" ||
+                    event.type === "playerLeave" ||
+                    event.type === "teamChange"
+                ) &&
+                (
+                    !event.username ||
                     !event.userId ||
                     !event.serverId ||
-                    !event.serverName ||
-                    !event.team)
+                    !event.serverName
+                )
             ) {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid teamChanged event payload"
+                    message: "Invalid player event payload"
+                });
+            }
+
+            // Validate team change event
+            if (
+                event.type === "teamChange" &&
+                !event.team
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid teamChange event payload"
                 });
             }
 
@@ -83,7 +97,6 @@ export function startApi(client: Client) {
             }
 
             if (!guild) {
-                // Fallback to first available guild
                 guild = client.guilds.cache.values().next().value;
             }
 
@@ -94,11 +107,15 @@ export function startApi(client: Client) {
                 });
             }
 
-            // Handle Roblox server creation
-            if (event.type === "serverCreated") {
-                const categoryName = `${event.serverName} - ${event.serverId}`;
+            // ==========================================
+            // ROBLOX SERVER CREATED
+            // ==========================================
 
-                // Check if the category already exists
+            if (event.type === "serverCreated") {
+                const categoryName =
+                    `${event.serverName} - ${event.serverId}`;
+
+                // Check if category already exists
                 const existingCategory = guild.channels.cache.find(
                     channel =>
                         channel.type === ChannelType.GuildCategory &&
@@ -110,6 +127,14 @@ export function startApi(client: Client) {
                         `Category already exists: ${categoryName}`
                     );
 
+                    // Make sure the forum exists even if
+                    // the category already existed
+                    await ensureServerLogForum(
+                        guild,
+                        event.serverId,
+                        event.serverName
+                    );
+
                     return res.json({
                         success: true,
                         created: false,
@@ -118,66 +143,119 @@ export function startApi(client: Client) {
                     });
                 }
 
-                // Create the Discord category
+                // Create Discord category
                 const category = await guild.channels.create({
                     name: categoryName,
                     type: ChannelType.GuildCategory,
-                    reason: `Created for Roblox server ${event.serverId}`
+                    reason:
+                        `Created for Roblox server ${event.serverId}`
                 });
 
                 console.log(
-                    `Created category "${category.name}" (${category.id}) for Roblox server ${event.serverId}`
+                    `Created category "${category.name}" ` +
+                    `(${category.id}) for Roblox server ` +
+                    `${event.serverId}`
+                );
+
+                // Create user-logs Forum inside category
+                const forum = await ensureServerLogForum(
+                    guild,
+                    event.serverId,
+                    event.serverName
+                );
+
+                console.log(
+                    `Created server user-logs forum ` +
+                    `"${forum.name}" (${forum.id})`
                 );
 
                 return res.json({
                     success: true,
                     created: true,
-                    categoryId: category.id
+                    categoryId: category.id,
+                    forumId: forum.id
                 });
             }
 
-            // Build a lightweight User-like object for logger utilities
+            // ==========================================
+            // BUILD ROBLOX USER
+            // ==========================================
+
             const robloxUser = ({
                 tag: event.username,
                 username: event.username,
                 id: String(event.userId)
             } as unknown) as User;
 
-            const human = event.username;
+            // ==========================================
+            // EVENT NAME
+            // ==========================================
 
-            const eventName =
-                event.type === "playerJoin"
-                    ? "Player Joined"
-                    : event.type === "playerLeave"
-                        ? "Player Left"
-                        : `Event: ${event.type}`;
+            let eventName: string;
+
+            if (event.type === "playerJoin") {
+                eventName = "Player Joined";
+            } else if (event.type === "playerLeave") {
+                eventName = "Player Left";
+            } else if (event.type === "teamChange") {
+                eventName = "Team Changed";
+            } else {
+                eventName = `Event: ${event.type}`;
+            }
+
+            // ==========================================
+            // EVENT DETAILS
+            // ==========================================
 
             const metaLines: string[] = [];
 
-            metaLines.push(`Roblox username: ${event.username}`);
-            metaLines.push(`Roblox ID: ${event.userId}`);
+            metaLines.push(
+                `Roblox username: ${event.username}`
+            );
+
+            metaLines.push(
+                `Roblox ID: ${event.userId}`
+            );
 
             if (event.placeName) {
-                metaLines.push(`Place: ${event.placeName}`);
+                metaLines.push(
+                    `Place: ${event.placeName}`
+                );
             }
 
             if (event.placeId) {
-                metaLines.push(`Place ID: ${event.placeId}`);
+                metaLines.push(
+                    `Place ID: ${event.placeId}`
+                );
             }
 
             if (event.serverId) {
-                metaLines.push(`Server ID: ${event.serverId}`);
+                metaLines.push(
+                    `Server ID: ${event.serverId}`
+                );
             }
 
             if (event.serverName) {
-                metaLines.push(`Server: ${event.serverName}`);
+                metaLines.push(
+                    `Server: ${event.serverName}`
+                );
             }
-            
-            if (event.team) metaLines.push(`Team: ${event.team}`);
 
-            metaLines.push(`Reported by: ${human}`);
+            if (event.team) {
+                metaLines.push(
+                    `Team: ${event.team}`
+                );
+            }
+
+            metaLines.push(
+                `Reported by: ${event.username}`
+            );
 
             const details = metaLines.join("\n");
+
+            // ==========================================
+            // GLOBAL USER-LOGS FORUM
+            // ==========================================
 
             await logUserEvent(
                 guild,
@@ -186,106 +264,42 @@ export function startApi(client: Client) {
                 details
             );
 
-            if (
-                event.type === "playerJoin" &&
-                event.serverId &&
-                event.serverName
-            ) {
-                console.log(
-                    `Creating player channel for ${event.username} (${event.userId})`
-                );
-
-                try {
-                    await ensurePlayerChannel(
-                        guild,
-                        event.username,
-                        String(event.userId),
-                        event.serverId,
-                        event.serverName,
-                        event.team || "No Team"
-                    );
-
-                    console.log(
-                        `Player channel created successfully for ${event.username}`
-                    );
-                } catch (error) {
-                    console.error(
-                        `Failed to create player channel for ${event.username}:`,
-                        error
-                    );
-                }
-            }
+            // ==========================================
+            // SERVER-SPECIFIC USER-LOGS FORUM
+            // ==========================================
 
             if (
-                event.type === "playerLeave" &&
-                event.serverId &&
-                event.serverName
-            ) {
-                console.log(
-                    `Deleting player channel for ${event.username} (${event.userId})`
-                );
-
-                try {
-                    await deletePlayerChannel(
-                        guild,
-                        event.username,
-                        String(event.userId),
-                        event.serverId,
-                        event.serverName
-                    );
-
-                    console.log(
-                        `Player channel deleted successfully for ${event.username}`
-                    );
-                } catch (error) {
-                    console.error(
-                        `Failed to delete player channel for ${event.username}:`,
-                        error
-                    );
-                }
-            }
-            if (
-                event.type === "teamChanged" &&
                 event.serverId &&
                 event.serverName &&
-                event.team
+                (
+                    event.type === "playerJoin" ||
+                    event.type === "playerLeave" ||
+                    event.type === "teamChange"
+                )
             ) {
-                const teamDetails =
-                    `Roblox username: ${event.username}\n` +
-                    `Roblox ID: ${event.userId}\n` +
-                    `Team: ${event.team}\n` +
-                    `Server: ${event.serverName}\n` +
-                    `Server ID: ${event.serverId}`;
-
-                // Log dans le user-log permanent
-                await logUserEvent(
+                await logServerUserEvent(
                     guild,
                     robloxUser,
-                    "Team Changed",
-                    teamDetails
-                );
-
-                // Log dans le channel temporaire du serveur
-                await logPlayerServerEvent(
-                    guild,
-                    event.username,
-                    String(event.userId),
+                    eventName,
+                    details,
                     event.serverId,
-                    event.serverName,
-                    "Team Changed",
-                    `Player joined/changed team to **${event.team}**`
-                );
-
-                console.log(
-                    `${event.username} changed team to ${event.team}`
+                    event.serverName
                 );
             }
+
+            // ==========================================
+            // RESPONSE
+            // ==========================================
+
             res.json({
                 success: true
             });
 
         } catch (error) {
-            console.error(error);
+            console.error(
+                "Error processing Roblox event:",
+                error
+            );
 
             res.status(500).json({
                 success: false,
@@ -294,7 +308,13 @@ export function startApi(client: Client) {
         }
     });
 
-    app.listen(4000, "0.0.0.0", () => {
-        console.log("Discord API listening on port 4000");
-    });
+    app.listen(
+        4000,
+        "0.0.0.0",
+        () => {
+            console.log(
+                "Discord API listening on port 4000"
+            );
+        }
+    );
 }
