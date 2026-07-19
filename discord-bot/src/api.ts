@@ -143,48 +143,45 @@ export function startApi(client: Client) {
                     });
                 }
 
+               // ==========================================
+                // RESOLVE AUTHORIZED DISCORD GUILD
                 // ==========================================
-                // RESOLVE DISCORD GUILD
-                // ==========================================
 
-                let guild;
-
-                if (config.guildId) {
-
-                    try {
-
-                        guild =
-                            await client.guilds.fetch(
-                                config.guildId
-                            );
-
-                    } catch (err) {
-
-                        guild =
-                            client.guilds.cache.get(
-                                config.guildId
-                            );
-                    }
-                }
-
-                // Fallback to first available guild
-                if (!guild) {
-
-                    guild =
-                        client.guilds.cache
-                            .values()
-                            .next()
-                            .value;
-                }
-
-                if (!guild) {
+                if (!config.guildId) {
+                    console.error("GUILD_ID is not configured.");
 
                     return res.status(500).json({
                         success: false,
-                        message:
-                            "Bot is not in any guild"
+                        message: "GUILD_ID is not configured"
                     });
                 }
+
+                let guild;
+
+                try {
+                    guild = await client.guilds.fetch(config.guildId);
+                } catch (error) {
+                    console.error(
+                        `Failed to fetch configured Discord guild ${config.guildId}:`,
+                        error
+                    );
+
+                    return res.status(500).json({
+                        success: false,
+                        message: "Configured Discord guild not found"
+                    });
+                }
+
+                if (!guild) {
+                    return res.status(500).json({
+                        success: false,
+                        message: "Configured Discord guild is unavailable"
+                    });
+                }
+
+                console.log(
+                    `Using authorized Discord guild: ${guild.name} (${guild.id})`
+                );
 
                 // ==========================================
                 // ROBLOX SERVER CREATED
