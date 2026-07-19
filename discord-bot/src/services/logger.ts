@@ -243,7 +243,6 @@ export async function deletePlayerChannel(
     serverId: string,
     serverName: string
 ): Promise<void> {
-
     await guild.channels.fetch();
 
     const categoryName = `${serverName} - ${serverId}`;
@@ -252,7 +251,7 @@ export async function deletePlayerChannel(
         channel =>
             channel.type === ChannelType.GuildCategory &&
             channel.name === categoryName
-    );
+    ) as CategoryChannel | undefined;
 
     if (!category) {
         console.log(
@@ -263,25 +262,37 @@ export async function deletePlayerChannel(
 
     const channelName = `${username}-${userId}`;
 
-    const playerChannel = guild.channels.cache.find(
+    // Search directly inside the category
+    const playerChannel = category.children.cache.find(
         channel =>
             channel.type === ChannelType.GuildText &&
-            channel.parentId === category.id &&
             channel.name === channelName
-    );
+    ) as TextChannel | undefined;
 
     if (!playerChannel) {
         console.log(
-            `Player channel not found: ${channelName}`
+            `Player channel not found: ${channelName} in category ${categoryName}`
         );
+
+        console.log(
+            "Channels currently in category:",
+            category.children.cache.map(channel => channel.name)
+        );
+
         return;
     }
 
-    await playerChannel.delete(
-        `Player ${username} (${userId}) left Roblox server`
-    );
-
-    console.log(
-        `Deleted player channel: ${channelName}`
-    );
+    try {
+        await playerChannel.delete(
+            `Player ${username} (${userId}) left Roblox server`
+        );
+        console.log(
+            `Successfully deleted player channel: ${channelName} in category ${categoryName}`
+        );
+    } catch (err) {
+        console.log(
+            `Failed to delete player channel: ${channelName} in category ${categoryName}`,
+            err
+        );
+    }
 }
