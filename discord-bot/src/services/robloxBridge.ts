@@ -87,9 +87,18 @@ export async function forwardCaseToBackend(payload: {
     type: string;
 }) {
     const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
+    const apiKey = process.env.API_KEY;
+
+    if (!apiKey) {
+        throw new Error("API_KEY is not configured");
+    }
+
     const response = await fetch(`${baseUrl}/cases`, {
         method: "POST",
-        headers: buildApiHeaders(),
+        headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey
+        },
         body: JSON.stringify(payload)
     });
 
