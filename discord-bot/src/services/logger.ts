@@ -269,7 +269,7 @@ export async function deletePlayerChannel(
         return;
     }
 
-    const channelName = `${username}-${userId}`;
+    const channelName = `${username}-${userId}`.toLowerCase();
 
     // Search directly inside the category
     const playerChannel = category.children.cache.find(
