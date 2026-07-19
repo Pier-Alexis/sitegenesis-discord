@@ -1,4 +1,4 @@
-import { ChannelType, EmbedBuilder, ForumChannel, Guild, TextChannel, ThreadChannel, User, type Message, type PartialMessage } from "discord.js";
+import { ChannelType, EmbedBuilder, ForumChannel, Guild, TextChannel, ThreadChannel, User, CategoryChannel, type Message, type PartialMessage } from "discord.js";
 import { config } from "../config.js";
 
 const LOG_CHANNEL_NAME = config.channels.moderationLogs || "user-logs";
@@ -188,4 +188,100 @@ export async function logMessageEvent(guild: Guild, user: User, event: string, m
     } catch (error) {
         console.error("Failed to log message event:", error);
     }
+}
+
+export async function ensurePlayerChannel(
+    guild: Guild,
+    username: string,
+    userId: string,
+    serverId: string,
+    serverName: string
+): Promise<TextChannel> {
+
+    await guild.channels.fetch();
+
+    const categoryName = `${serverName} - ${serverId}`;
+
+    const category = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildCategory &&
+            channel.name === categoryName
+    ) as CategoryChannel | undefined;
+
+    if (!category) {
+        throw new Error(
+            `Server category not found: ${categoryName}`
+        );
+    }
+
+    const channelName = `${username}-${userId}`;
+
+    const existingChannel = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildText &&
+            channel.parentId === category.id &&
+            channel.name === channelName
+    ) as TextChannel | undefined;
+
+    if (existingChannel) {
+        return existingChannel;
+    }
+
+    return guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: category.id,
+        reason: `Player channel for ${username} (${userId})`
+    });
+}
+
+
+export async function deletePlayerChannel(
+    guild: Guild,
+    username: string,
+    userId: string,
+    serverId: string,
+    serverName: string
+): Promise<void> {
+
+    await guild.channels.fetch();
+
+    const categoryName = `${serverName} - ${serverId}`;
+
+    const category = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildCategory &&
+            channel.name === categoryName
+    );
+
+    if (!category) {
+        console.log(
+            `Server category not found: ${categoryName}`
+        );
+        return;
+    }
+
+    const channelName = `${username}-${userId}`;
+
+    const playerChannel = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildText &&
+            channel.parentId === category.id &&
+            channel.name === channelName
+    );
+
+    if (!playerChannel) {
+        console.log(
+            `Player channel not found: ${channelName}`
+        );
+        return;
+    }
+
+    await playerChannel.delete(
+        `Player ${username} (${userId}) left Roblox server`
+    );
+
+    console.log(
+        `Deleted player channel: ${channelName}`
+    );
 }

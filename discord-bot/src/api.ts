@@ -2,7 +2,7 @@ import express from "express";
 import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
-import { logUserEvent } from "./services/logger.js";
+import { logUserEvent, ensurePlayerChannel, deletePlayerChannel } from "./services/logger.js";
 import type { User } from "discord.js";
 
 dotenv.config();

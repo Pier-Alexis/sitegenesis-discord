@@ -15,7 +15,13 @@ router.post("/", async (req, res) => {
             });
         }
 
-        const { type, username, userId, serverId, serverName } = event as {
+        const {
+            type,
+            username,
+            userId,
+            serverId,
+            serverName
+        } = event as {
             type?: string;
             username?: string;
             userId?: number | string;
@@ -29,7 +35,6 @@ router.post("/", async (req, res) => {
             "serverCreated"
         ]);
 
-        // Check event type
         if (!type || !allowedTypes.has(type)) {
             return res.status(400).json({
                 success: false,
@@ -40,15 +45,15 @@ router.post("/", async (req, res) => {
         // Validate player events
         if (
             (type === "playerJoin" || type === "playerLeave") &&
-            (!username || !userId)
+            (!username || !userId || !serverId || !serverName)
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid player event: username and userId required"
+                message: "Invalid player event: username, userId, serverId and serverName required"
             });
         }
 
-        // Validate server creation events
+        // Validate server creation
         if (
             type === "serverCreated" &&
             (!serverId || !serverName)
@@ -85,7 +90,7 @@ router.post("/", async (req, res) => {
             });
         }
 
-        res.json({
+        return res.json({
             success: true,
             discord: result
         });
@@ -93,7 +98,7 @@ router.post("/", async (req, res) => {
     } catch (error) {
         console.error("Error sending event to Discord:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Failed to send event to Discord"
         });
