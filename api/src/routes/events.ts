@@ -33,7 +33,8 @@ router.post("/", async (req, res) => {
             "playerJoin",
             "playerLeave",
             "serverCreated",
-            "teamChanged"
+            "teamChanged",
+            "serverEmpty"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
