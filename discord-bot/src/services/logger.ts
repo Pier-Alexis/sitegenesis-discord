@@ -200,6 +200,7 @@ export async function ensurePlayerChannel(
 
     await guild.channels.fetch();
 
+    const categoryName = `${serverName} - ${serverId}`;
     const channelName = `${username}-${userId}`.toLowerCase();
 
     const category = guild.channels.cache.find(
@@ -214,8 +215,6 @@ export async function ensurePlayerChannel(
         );
     }
 
-    const channelName = `${username}-${userId}`.toLowerCase();
-
     const existingChannel = guild.channels.cache.find(
         channel =>
             channel.type === ChannelType.GuildText &&
@@ -224,15 +223,25 @@ export async function ensurePlayerChannel(
     ) as TextChannel | undefined;
 
     if (existingChannel) {
+        console.log(
+            `Player channel already exists: ${channelName}`
+        );
+
         return existingChannel;
     }
 
-    return guild.channels.create({
+    const playerChannel = await guild.channels.create({
         name: channelName,
         type: ChannelType.GuildText,
         parent: category.id,
         reason: `Player channel for ${username} (${userId})`
     });
+
+    console.log(
+        `Created player channel "${channelName}" in category "${categoryName}" (${playerChannel.id})`
+    );
+
+    return playerChannel;
 }
 
 
