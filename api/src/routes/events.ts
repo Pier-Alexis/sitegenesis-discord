@@ -9,15 +9,57 @@ router.post("/", async (req, res) => {
         console.log("Roblox event received:", event);
 
         if (!event || typeof event !== "object") {
-            return res.status(400).json({ success: false, message: "Invalid payload" });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid payload"
+            });
         }
 
-        const { type, username } = event as { type?: string; username?: string };
-        const allowedTypes = new Set(["playerJoin", "playerLeave"]);
+        const { type, username, userId, serverId, serverName } = event as {
+            type?: string;
+            username?: string;
+            userId?: number | string;
+            serverId?: string;
+            serverName?: string;
+        };
 
-        if (!type || !allowedTypes.has(type) || !username) {
-            return res.status(400).json({ success: false, message: "Invalid or missing fields: type and username required" });
+        const allowedTypes = new Set([
+            "playerJoin",
+            "playerLeave",
+            "serverCreated"
+        ]);
+
+        // Check event type
+        if (!type || !allowedTypes.has(type)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid event type"
+            });
         }
+
+        // Validate player events
+        if (
+            (type === "playerJoin" || type === "playerLeave") &&
+            (!username || !userId)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid player event: username and userId required"
+            });
+        }
+
+        // Validate server creation events
+        if (
+            type === "serverCreated" &&
+            (!serverId || !serverName)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid serverCreated event: serverId and serverName required"
+            });
+        }
+
+        console.log(`Forwarding ${type} event to Discord bot...`);
 
         const response = await fetch("http://127.0.0.1:4000/events", {
             method: "POST",
@@ -29,6 +71,19 @@ router.post("/", async (req, res) => {
         });
 
         const result = await response.json();
+
+        console.log(
+            `Discord bot responded with status ${response.status}:`,
+            result
+        );
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                message: "Discord bot rejected the event",
+                discord: result
+            });
+        }
 
         res.json({
             success: true,
@@ -46,4 +101,3 @@ router.post("/", async (req, res) => {
 });
 
 export default router;
-
