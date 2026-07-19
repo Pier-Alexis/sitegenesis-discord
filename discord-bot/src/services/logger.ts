@@ -223,10 +223,6 @@ export async function ensurePlayerChannel(
     ) as TextChannel | undefined;
 
     if (existingChannel) {
-        console.log(
-            `Player channel already exists: ${channelName}`
-        );
-
         return existingChannel;
     }
 
@@ -329,4 +325,36 @@ export async function deletePlayerChannel(
             `Server category ${categoryName} still has ${remainingChannels} player channel(s)`
         );
     }
+}
+
+export async function findPlayerChannel(
+    guild: Guild,
+    username: string,
+    userId: string,
+    serverId: string,
+    serverName: string
+): Promise<TextChannel | null> {
+
+    await guild.channels.fetch();
+
+    const categoryName = `${serverName} - ${serverId}`;
+    const channelName = `${username}-${userId}`.toLowerCase();
+
+    const category = guild.channels.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildCategory &&
+            channel.name === categoryName
+    ) as CategoryChannel | undefined;
+
+    if (!category) {
+        return null;
+    }
+
+    const playerChannel = category.children.cache.find(
+        channel =>
+            channel.type === ChannelType.GuildText &&
+            channel.name === channelName
+    ) as TextChannel | undefined;
+
+    return playerChannel ?? null;
 }

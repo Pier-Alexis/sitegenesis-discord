@@ -2,7 +2,7 @@ import express from "express";
 import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
-import { logUserEvent, ensurePlayerChannel, deletePlayerChannel } from "./services/logger.js";
+import { logUserEvent, ensurePlayerChannel, deletePlayerChannel, logPlayerServerEvent } from "./services/logger.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -54,6 +54,20 @@ export function startApi(client: Client) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid serverCreated event payload"
+                });
+            }
+
+            if (
+                event.type === "teamChanged" &&
+                (!event.username ||
+                    !event.userId ||
+                    !event.serverId ||
+                    !event.serverName ||
+                    !event.team)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid teamChanged event payload"
                 });
             }
 
@@ -158,6 +172,8 @@ export function startApi(client: Client) {
             if (event.serverName) {
                 metaLines.push(`Server: ${event.serverName}`);
             }
+            
+            if (event.team) metaLines.push(`Team: ${event.team}`);
 
             metaLines.push(`Reported by: ${human}`);
 
@@ -185,7 +201,8 @@ export function startApi(client: Client) {
                         event.username,
                         String(event.userId),
                         event.serverId,
-                        event.serverName
+                        event.serverName,
+                        event.team || "No Team"
                     );
 
                     console.log(
@@ -227,7 +244,42 @@ export function startApi(client: Client) {
                     );
                 }
             }
+            if (
+                event.type === "teamChanged" &&
+                event.serverId &&
+                event.serverName &&
+                event.team
+            ) {
+                const teamDetails =
+                    `Roblox username: ${event.username}\n` +
+                    `Roblox ID: ${event.userId}\n` +
+                    `Team: ${event.team}\n` +
+                    `Server: ${event.serverName}\n` +
+                    `Server ID: ${event.serverId}`;
 
+                // Log dans le user-log permanent
+                await logUserEvent(
+                    guild,
+                    robloxUser,
+                    "Team Changed",
+                    teamDetails
+                );
+
+                // Log dans le channel temporaire du serveur
+                await logPlayerServerEvent(
+                    guild,
+                    event.username,
+                    String(event.userId),
+                    event.serverId,
+                    event.serverName,
+                    "Team Changed",
+                    `Player joined/changed team to **${event.team}**`
+                );
+
+                console.log(
+                    `${event.username} changed team to ${event.team}`
+                );
+            }
             res.json({
                 success: true
             });
