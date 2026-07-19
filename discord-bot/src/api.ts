@@ -170,6 +170,64 @@ export function startApi(client: Client) {
                 details
             );
 
+            if (
+                event.type === "playerJoin" &&
+                event.serverId &&
+                event.serverName
+            ) {
+                console.log(
+                    `Creating player channel for ${event.username} (${event.userId})`
+                );
+
+                try {
+                    await ensurePlayerChannel(
+                        guild,
+                        event.username,
+                        String(event.userId),
+                        event.serverId,
+                        event.serverName
+                    );
+
+                    console.log(
+                        `Player channel created successfully for ${event.username}`
+                    );
+                } catch (error) {
+                    console.error(
+                        `Failed to create player channel for ${event.username}:`,
+                        error
+                    );
+                }
+            }
+
+            if (
+                event.type === "playerLeave" &&
+                event.serverId &&
+                event.serverName
+            ) {
+                console.log(
+                    `Deleting player channel for ${event.username} (${event.userId})`
+                );
+
+                try {
+                    await deletePlayerChannel(
+                        guild,
+                        event.username,
+                        String(event.userId),
+                        event.serverId,
+                        event.serverName
+                    );
+
+                    console.log(
+                        `Player channel deleted successfully for ${event.username}`
+                    );
+                } catch (error) {
+                    console.error(
+                        `Failed to delete player channel for ${event.username}:`,
+                        error
+                    );
+                }
+            }
+
             res.json({
                 success: true
             });
