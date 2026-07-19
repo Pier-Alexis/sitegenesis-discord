@@ -214,7 +214,7 @@ export async function ensurePlayerChannel(
         );
     }
 
-    const channelName = `${username}-${userId}`;
+    const channelName = `${username}-${userId}`.toLowerCase();
 
     const existingChannel = guild.channels.cache.find(
         channel =>
