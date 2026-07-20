@@ -4,6 +4,7 @@ import bansRouter from "./routes/bans.js";
 import casesRouter from "./routes/cases.js";
 import { requireApiKey } from "./middleware/auth.js";
 import eventsRouter from "./routes/events.js";
+import { startCommunityModerationWorker } from "./services/communityModerationWorker.js";
 
 dotenv.config();
 
@@ -34,4 +35,5 @@ app.get("/health", (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`API running on port ${PORT}`);
+    startCommunityModerationWorker();
 });

@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Guild, type Message, type ThreadChannel } from "discord.js";
 import { ensureUserThread, findUserThread, getModerationLogForums } from "./logger.js";
 
-export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban";
+export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban" | "setgrouprank";
 
 export type ModerationEvent = {
     id: string;
@@ -25,6 +25,7 @@ function getActionLabel(type: ModerationEventType) {
         case "unmute": return "Unmute";
         case "warning": return "Warning";
         case "softban": return "Softban";
+        case "setgrouprank": return "Set Group Rank";
     }
 }
 
@@ -36,6 +37,7 @@ function getActionColor(type: ModerationEventType) {
         case "unmute": return 0x5865f2;
         case "warning": return 0xffcc4d;
         case "softban": return 0xfee75c;
+        case "setgrouprank": return 0x64d2ff;
     }
 }
 
@@ -47,7 +49,9 @@ function normalizeEventType(value: string): ModerationEventType | null {
     if (normalized === "unmute" || normalized === "unmutes") return "unmute";
     if (normalized === "warning" || normalized === "warnings") return "warning";
     if (normalized === "softban" || normalized === "softbans") return "softban";
+    if (normalized === "setgrouprank" || normalized === "set group rank" || normalized === "grouprank") return "setgrouprank";
     if (normalized.includes("softban")) return "softban";
+    if (/group\s*rank/.test(normalized)) return "setgrouprank";
     return null;
 }
 

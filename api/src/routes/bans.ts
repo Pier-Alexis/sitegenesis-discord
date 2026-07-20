@@ -33,35 +33,57 @@ router.post("/ban", (req, res) => {
 });
 
 router.post("/roblox/moderation", (req, res) => {
-    const { action, userId, username, reason, moderator } = req.body;
+    const { action, userId, username, reason, moderator, metadata } = req.body;
 
     if (!action || !userId || !username || !moderator) {
         res.status(400).json({ success: false, message: "Missing moderation fields" });
         return;
     }
 
-    db.prepare(`
-        INSERT INTO bans
-        (userId, username, reason, moderator, createdAt)
-        VALUES (?, ?, ?, ?, ?)
-    `).run(
-        userId,
-        username,
-        reason ?? "No reason provided",
-        moderator,
-        Date.now()
-    );
+    const allowedActions = new Set([
+        "ban",
+        "unban",
+        "mute",
+        "unmute",
+        "warn",
+        "setGroupRank"
+    ]);
+
+    if (!allowedActions.has(action)) {
+        res.status(400).json({ success: false, message: "Unsupported moderation action" });
+        return;
+    }
+
+    if (metadata !== undefined && (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))) {
+        res.status(400).json({ success: false, message: "Invalid metadata payload" });
+        return;
+    }
+
+    if (action === "ban") {
+        db.prepare(`
+            INSERT INTO bans
+            (userId, username, reason, moderator, createdAt)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(
+            userId,
+            username,
+            reason ?? "No reason provided",
+            moderator,
+            Date.now()
+        );
+    }
 
     db.prepare(`
         INSERT INTO moderation_actions
-        (action, userId, username, reason, moderator, status, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (action, userId, username, reason, moderator, metadata, status, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         action,
         userId,
         username,
         reason ?? "No reason provided",
         moderator,
+        metadata ? JSON.stringify(metadata) : null,
         "pending",
         Date.now()
     );
@@ -73,9 +95,27 @@ router.post("/roblox/moderation", (req, res) => {
 });
 
 router.get("/roblox/moderation/pending", (req, res) => {
-    const pending = db.prepare(
+    const pendingRows = db.prepare(
         "SELECT * FROM moderation_actions WHERE status = 'pending' ORDER BY createdAt DESC"
     ).all();
+
+    const pending = pendingRows.map((row: any) => {
+        if (!row.metadata || typeof row.metadata !== "string") {
+            return row;
+        }
+
+        try {
+            return {
+                ...row,
+                metadata: JSON.parse(row.metadata)
+            };
+        } catch {
+            return {
+                ...row,
+                metadata: null
+            };
+        }
+    });
 
     res.json(pending);
 });
@@ -98,6 +138,52 @@ router.post("/roblox/moderation/:id/processed", (req, res) => {
     }
 
     res.json({ success: true, message: "Moderation action marked as processed" });
+});
+
+router.get("/roblox/moderation/failed", (req, res) => {
+    const failedRows = db.prepare(
+        "SELECT * FROM moderation_actions WHERE status = 'failed' ORDER BY createdAt DESC"
+    ).all();
+
+    const failed = failedRows.map((row: any) => {
+        if (!row.metadata || typeof row.metadata !== "string") {
+            return row;
+        }
+
+        try {
+            return {
+                ...row,
+                metadata: JSON.parse(row.metadata)
+            };
+        } catch {
+            return {
+                ...row,
+                metadata: null
+            };
+        }
+    });
+
+    res.json(failed);
+});
+
+router.post("/roblox/moderation/:id/retry", (req, res) => {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id)) {
+        res.status(400).json({ success: false, message: "Invalid moderation action id" });
+        return;
+    }
+
+    const result = db.prepare(
+        "UPDATE moderation_actions SET status = 'pending' WHERE id = ? AND status = 'failed'"
+    ).run(id);
+
+    if (result.changes === 0) {
+        res.status(404).json({ success: false, message: "Failed moderation action not found" });
+        return;
+    }
+
+    res.json({ success: true, message: "Moderation action moved back to pending" });
 });
 
 router.get("/bans", (req, res) => {

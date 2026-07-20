@@ -28,9 +28,17 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
     username TEXT NOT NULL,
     reason TEXT NOT NULL,
     moderator TEXT NOT NULL,
+    metadata TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     createdAt INTEGER NOT NULL
 );
 `);
+
+const moderationActionColumns = db.prepare("PRAGMA table_info(moderation_actions)").all() as Array<{ name: string }>;
+const hasMetadataColumn = moderationActionColumns.some(column => column.name === "metadata");
+
+if (!hasMetadataColumn) {
+    db.exec("ALTER TABLE moderation_actions ADD COLUMN metadata TEXT");
+}
 
 export default db;

@@ -1,0 +1,283 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.PlaceId)--only for roblox studio, use "serverId = game.JobId," before publishing to roblox
+local serverName = game.Name
+
+local API_URL = "REDACTED"--change to REDACTED before publishing if not already done
+local MODERATION_PENDING_URL = "REDACTED"
+local MODERATION_PROCESSED_BASE_URL = "REDACTED"
+
+local API_KEY = "REDACTED"
+
+
+local function sendEvent(data)
+
+	local success, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = API_URL,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json",
+				["x-api-key"] = API_KEY
+			},
+			Body = HttpService:JSONEncode(data)
+		})
+	end)
+
+	if success then
+		print("Event sent:", response.StatusCode, response.Body)
+	else
+		warn("Failed sending event:", response)
+	end
+end
+
+Players.PlayerAdded:Connect(function(player)
+
+	sendEvent({
+		type = "playerJoin",
+		username = player.Name,
+		userId = player.UserId,
+		serverId = serverId,
+		serverName = game.Name,
+		placeId = game.PlaceId
+	})
+
+	player:GetPropertyChangedSignal("Team"):Connect(function()
+
+		if not player.Team then
+			return
+		end
+
+		print(
+			player.Name ..
+				" changed team to " ..
+				player.Team.Name
+		)
+
+		sendEvent({
+			type = "teamChanged",
+			username = player.Name,
+			userId = player.UserId,
+			team = player.Team.Name,
+			serverId = serverId,
+			serverName = game.Name,
+			placeId = game.PlaceId
+		})
+	end)
+
+end)
+
+
+Players.PlayerRemoving:Connect(function(player)
+
+	print(
+		"[SiteGenesis] PlayerRemoving:",
+		player.Name
+	)
+
+	sendEvent({
+		type = "playerLeave",
+		username = player.Name,
+		userId = player.UserId,
+		serverId = serverId,
+		serverName = serverName,
+		placeId = game.PlaceId
+	})
+
+	task.delay(2, function()
+
+		local remainingPlayers = #Players:GetPlayers()
+
+		print(
+			"[SiteGenesis] Players remaining:",
+			remainingPlayers
+		)
+
+		if remainingPlayers == 0 then
+
+			print(
+				"[SiteGenesis] Server is empty. Sending serverEmpty event."
+			)
+
+			sendEvent({
+				type = "serverEmpty",
+				serverId = serverId,
+				serverName = serverName,
+				placeId = game.PlaceId,
+				placeName = game.Name
+			})
+
+		end
+
+	end)
+
+end)
+
+local function sendServerCreated()
+
+	local data = {
+		type = "serverCreated",
+		serverId = serverId,
+		serverName = game.Name,
+		placeId = game.PlaceId
+	}
+
+	print("Sending serverCreated event:")
+	print(HttpService:JSONEncode(data))
+
+	local success, response = pcall(function()
+
+		return HttpService:RequestAsync({
+			Url = API_URL,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json",
+				["x-api-key"] = API_KEY
+			},
+			Body = HttpService:JSONEncode(data)
+		})
+
+	end)
+
+	if success then
+
+		print("Server created HTTP request completed")
+		print("Status code:", response.StatusCode)
+		print("Response body:", response.Body)
+
+		if response.Success then
+			print("Server created event accepted by API")
+		else
+			warn(
+				"API rejected serverCreated event:",
+				response.StatusCode
+			)
+		end
+
+	else
+
+		warn(
+			"Failed sending serverCreated event:",
+			response
+		)
+
+	end
+end
+
+
+sendServerCreated()
+
+local function getPendingModerationActions()
+
+	local success, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = MODERATION_PENDING_URL,
+			Method = "GET",
+			Headers = {
+				["Content-Type"] = "application/json",
+				["x-api-key"] = API_KEY
+			}
+		})
+	end)
+
+	if not success or not response or not response.Success then
+		warn("Failed to fetch moderation actions:", response)
+		return {}
+	end
+
+	local decodedSuccess, decoded = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+
+	if not decodedSuccess or type(decoded) ~= "table" then
+		warn("Failed to decode moderation actions payload")
+		return {}
+	end
+
+	return decoded
+end
+
+local function markModerationActionProcessed(actionId)
+
+	local success, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = MODERATION_PROCESSED_BASE_URL .. tostring(actionId) .. "/processed",
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json",
+				["x-api-key"] = API_KEY
+			},
+			Body = HttpService:JSONEncode({})
+		})
+	end)
+
+	if not success or not response or not response.Success then
+		warn("Failed to mark moderation action as processed:", actionId)
+	end
+end
+
+local function findOnlinePlayerByUserId(userId)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if tostring(player.UserId) == tostring(userId) then
+			return player
+		end
+	end
+
+	return nil
+end
+
+local function applyModerationAction(action)
+
+	if type(action) ~= "table" then
+		return
+	end
+
+	local actionType = action.action
+	local targetUserId = action.userId
+	local player = findOnlinePlayerByUserId(targetUserId)
+
+	if actionType == "ban" then
+		if player then
+			player:Kick("You were banned by the moderation system.")
+		end
+		return
+	end
+
+	if actionType == "setGroupRank" then
+		local metadata = action.metadata
+		local roleId = metadata and (metadata.roleId or metadata.rank) or "unknown"
+		warn("setGroupRank queued for user", targetUserId, "target role", roleId, ". Execute role update in backend worker.")
+		return
+	end
+
+	if actionType == "unban" or actionType == "mute" or actionType == "unmute" or actionType == "warn" then
+		warn("Action received but no in-server handler defined for:", actionType)
+		return
+	end
+
+	warn("Unsupported moderation action:", actionType)
+end
+
+task.spawn(function()
+	while true do
+		local actions = getPendingModerationActions()
+
+		for _, action in ipairs(actions) do
+			local ok, err = pcall(function()
+				applyModerationAction(action)
+			end)
+
+			if not ok then
+				warn("Error while applying moderation action:", err)
+			end
+
+			if action.id then
+				markModerationActionProcessed(action.id)
+			end
+		end
+
+		task.wait(5)
+	end
+end)

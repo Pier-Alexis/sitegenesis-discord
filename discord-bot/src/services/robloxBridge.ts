@@ -1,4 +1,4 @@
-export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn";
+export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn" | "setGroupRank";
 
 export type RobloxModerationPayload = {
     action: RobloxModerationAction;
@@ -6,6 +6,7 @@ export type RobloxModerationPayload = {
     username: string;
     reason: string;
     moderator: string;
+    metadata?: Record<string, unknown>;
 };
 
 export type RobloxPlayerEntry = {
@@ -38,13 +39,15 @@ export function buildModerationPayload(input: {
     targetUsername: string;
     reason: string;
     moderator: string;
+    metadata?: Record<string, unknown>;
 }): RobloxModerationPayload {
     return {
         action: input.action,
         userId: input.targetUserId,
         username: input.targetUsername,
         reason: input.reason,
-        moderator: input.moderator
+        moderator: input.moderator,
+        ...(input.metadata ? { metadata: input.metadata } : {})
     };
 }
 

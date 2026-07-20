@@ -21,6 +21,30 @@ test("buildModerationPayload includes the action, target, and moderator details"
     });
 });
 
+test("buildModerationPayload includes metadata when provided", () => {
+    const payload = buildModerationPayload({
+        action: "setGroupRank",
+        targetUserId: "123",
+        targetUsername: "PlayerOne",
+        reason: "Promotion",
+        moderator: "ModUser",
+        metadata: {
+            roleId: 200
+        }
+    });
+
+    assert.deepEqual(payload, {
+        action: "setGroupRank",
+        userId: "123",
+        username: "PlayerOne",
+        reason: "Promotion",
+        moderator: "ModUser",
+        metadata: {
+            roleId: 200
+        }
+    });
+});
+
 test("formatPlayerListEntry formats a player into the requested display pattern", () => {
     const entry = formatPlayerListEntry({
         username: "Genesis",
