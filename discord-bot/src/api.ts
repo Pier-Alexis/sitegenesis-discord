@@ -22,6 +22,39 @@ dotenv.config();
 
 const app = express();
 
+const recentRadioChatKeys =
+    new Map<string, number>();
+
+const RADIO_CHAT_DEDUP_WINDOW_MS = 2500;
+const PLAYER_CHAT_HOLD_MS = 350;
+
+function normalizeChatMessageForKey(message: string) {
+    return message
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function buildChatEventKey(event: {
+    serverId: string;
+    userId: string | number;
+    message: string;
+}) {
+    return [
+        event.serverId,
+        String(event.userId),
+        normalizeChatMessageForKey(event.message)
+    ].join("|");
+}
+
+function cleanupOldRecentRadioEntries(now: number) {
+    for (const [key, timestamp] of recentRadioChatKeys.entries()) {
+        if (now - timestamp > RADIO_CHAT_DEDUP_WINDOW_MS) {
+            recentRadioChatKeys.delete(key);
+        }
+    }
+}
+
 app.use(express.json());
 
 export function startApi(client: Client) {
@@ -388,6 +421,58 @@ export function startApi(client: Client) {
                     event.type ===
                         "playerRadioChat"
                 ) {
+
+                    const chatEventKey =
+                        buildChatEventKey({
+                            serverId: event.serverId,
+                            userId: event.userId,
+                            message: event.message
+                        });
+
+                    const now = Date.now();
+
+                    cleanupOldRecentRadioEntries(now);
+
+                    if (
+                        event.type ===
+                        "playerRadioChat"
+                    ) {
+                        recentRadioChatKeys.set(
+                            chatEventKey,
+                            now
+                        );
+                    }
+
+                    if (
+                        event.type ===
+                        "playerChat"
+                    ) {
+
+                        await new Promise(resolve => {
+                            setTimeout(
+                                resolve,
+                                PLAYER_CHAT_HOLD_MS
+                            );
+                        });
+
+                        cleanupOldRecentRadioEntries(
+                            Date.now()
+                        );
+
+                        if (
+                            recentRadioChatKeys.has(
+                                chatEventKey
+                            )
+                        ) {
+
+                            return res.json({
+                                success: true,
+                                skipped: true,
+                                reason:
+                                    "Duplicate of playerRadioChat"
+                            });
+                        }
+                    }
 
                     const robloxUser = ({
                         tag:
