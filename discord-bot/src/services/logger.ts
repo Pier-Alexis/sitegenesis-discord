@@ -373,22 +373,28 @@ export async function ensureServerLogForum(
     const categoryName =
         `${serverName} - ${serverId}`;
 
+    const archivedCategoryName =
+        `(ARCHIVE) ${categoryName}`;
+
     const category = guild.channels.cache.find(
         channel =>
             channel.type === ChannelType.GuildCategory &&
-            channel.name === categoryName
+            (
+                channel.name === categoryName ||
+                channel.name === archivedCategoryName
+            )
     ) as CategoryChannel | undefined;
 
-    if (!category) {
-        throw new Error(
-            `Server category not found: ${categoryName}`
-        );
-    }
+    const resolvedCategory = category ?? await guild.channels.create({
+        name: categoryName,
+        type: ChannelType.GuildCategory,
+        reason: `Create server category for Roblox server ${serverId}`
+    }) as CategoryChannel;
 
     const forumName = "user-logs";
 
     const existingForum =
-        category.children.cache.find(
+        resolvedCategory.children.cache.find(
             channel =>
                 channel.type === ChannelType.GuildForum &&
                 channel.name === forumName
@@ -401,7 +407,7 @@ export async function ensureServerLogForum(
     const forum = await guild.channels.create({
         name: forumName,
         type: ChannelType.GuildForum,
-        parent: category.id,
+        parent: resolvedCategory.id,
         reason:
             `User logs for Roblox server ${serverId}`
     });
