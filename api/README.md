@@ -42,12 +42,11 @@ curl -H "x-api-key: change-me" http://localhost:3000/api/roblox/moderation/pendi
 
 - `setGroupRank`
 
-For `setGroupRank`, include `roleId` in metadata:
+For `setGroupRank`, include `roleId` in metadata. You can send `userId` directly or send only `username` and let the API resolve the Roblox user ID automatically:
 
 ```json
 {
 	"action": "setGroupRank",
-	"userId": "123456",
 	"username": "RobloxPlayer",
 	"reason": "Promotion",
 	"moderator": "Mod#0001",

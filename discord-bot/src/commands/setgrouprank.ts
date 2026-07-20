@@ -7,14 +7,8 @@ export const data = new SlashCommandBuilder()
     .setDescription("Queue a Roblox community/group role change")
     .addStringOption(option =>
         option
-            .setName("roblox_user_id")
-            .setDescription("Roblox user ID to update")
-            .setRequired(true)
-    )
-    .addStringOption(option =>
-        option
             .setName("roblox_username")
-            .setDescription("Roblox username (for logs)")
+            .setDescription("Roblox username to update")
             .setRequired(true)
     )
     .addIntegerOption(option =>
@@ -52,14 +46,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const robloxUserId = interaction.options.getString("roblox_user_id", true).trim();
     const robloxUsername = interaction.options.getString("roblox_username", true).trim();
     const roleId = interaction.options.getInteger("role_id", true);
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
-    if (!/^\d+$/.test(robloxUserId)) {
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
-            content: "⚠️ Roblox user ID must be numeric.",
+            content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
             flags: MessageFlags.Ephemeral
         });
         return;
@@ -67,7 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const payload = buildModerationPayload({
         action: "setGroupRank",
-        targetUserId: robloxUserId,
+        targetUserId: "0",
         targetUsername: robloxUsername,
         reason,
         moderator: interaction.user.tag,
@@ -83,7 +76,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             type: "setgrouprank",
             guildId: guild.id,
             guildName: guild.name,
-            targetUserId: robloxUserId,
+            targetUserId: `roblox:${robloxUsername}`,
             targetUserTag: `${robloxUsername} (Roblox)`,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
@@ -91,7 +84,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         });
 
         await interaction.reply({
-            content: `✅ Queued role change for ${robloxUsername} (${robloxUserId}) to role ${roleId}.`
+            content: `✅ Queued role change for ${robloxUsername} to role ${roleId}.`
         });
     } catch (error) {
         console.error("Failed to queue rank change", error);

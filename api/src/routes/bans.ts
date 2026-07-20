@@ -3,6 +3,36 @@ import db from "../database/database.js";
 
 const router = Router();
 
+async function resolveRobloxUserIdByUsername(username: string) {
+    const response = await fetch("https://users.roblox.com/v1/usernames/users", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            usernames: [username],
+            excludeBannedUsers: false
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Roblox username lookup failed (${response.status})`);
+    }
+
+    const payload = await response.json() as {
+        data?: Array<{
+            id?: number;
+        }>;
+    };
+
+    const id = payload.data?.[0]?.id;
+    if (!id) {
+        return null;
+    }
+
+    return String(id);
+}
+
 router.post("/ban", (req, res) => {
 
     const {
@@ -32,10 +62,10 @@ router.post("/ban", (req, res) => {
     });
 });
 
-router.post("/roblox/moderation", (req, res) => {
+router.post("/roblox/moderation", async (req, res) => {
     const { action, userId, username, reason, moderator, metadata } = req.body;
 
-    if (!action || !userId || !username || !moderator) {
+    if (!action || !username || !moderator) {
         res.status(400).json({ success: false, message: "Missing moderation fields" });
         return;
     }
@@ -59,13 +89,37 @@ router.post("/roblox/moderation", (req, res) => {
         return;
     }
 
+    let resolvedUserId = typeof userId === "string" ? userId.trim() : "";
+
+    if (action === "setGroupRank") {
+        if (!/^\d+$/.test(resolvedUserId)) {
+            try {
+                const lookedUpUserId = await resolveRobloxUserIdByUsername(username);
+
+                if (!lookedUpUserId) {
+                    res.status(404).json({ success: false, message: "Roblox username not found" });
+                    return;
+                }
+
+                resolvedUserId = lookedUpUserId;
+            } catch (error) {
+                console.error("Failed to resolve Roblox username", error);
+                res.status(502).json({ success: false, message: "Failed to resolve Roblox username" });
+                return;
+            }
+        }
+    } else if (!/^\d+$/.test(resolvedUserId)) {
+        res.status(400).json({ success: false, message: "userId must be numeric for this action" });
+        return;
+    }
+
     if (action === "ban") {
         db.prepare(`
             INSERT INTO bans
             (userId, username, reason, moderator, createdAt)
             VALUES (?, ?, ?, ?, ?)
         `).run(
-            userId,
+            resolvedUserId,
             username,
             reason ?? "No reason provided",
             moderator,
@@ -79,7 +133,7 @@ router.post("/roblox/moderation", (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         action,
-        userId,
+        resolvedUserId,
         username,
         reason ?? "No reason provided",
         moderator,
