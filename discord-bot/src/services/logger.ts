@@ -30,6 +30,97 @@ function normalizeEmbedTitle(title: string | null | undefined) {
         .trim() ?? "";
 }
 
+function normalizeThreadLabel(value: string) {
+    return value
+        .replace(/\s*\(Roblox\)\s*$/i, "")
+        .trim();
+}
+
+function getUserThreadLabel(user: Pick<User, "tag" | "username" | "id">) {
+    const usernameLabel = normalizeThreadLabel(user.username?.trim() ?? "");
+
+    if (usernameLabel) {
+        return usernameLabel;
+    }
+
+    const tagLabel = user.tag.includes("#")
+        ? user.tag.split("#")[0]
+        : user.tag;
+    const normalizedTagLabel = normalizeThreadLabel(tagLabel ?? "");
+
+    return normalizedTagLabel || user.id;
+}
+
+function getUserThreadCandidates(user: Pick<User, "tag" | "username" | "id">) {
+    const canonicalLabel = getUserThreadLabel(user);
+    const tagLabel = user.tag.includes("#")
+        ? user.tag.split("#")[0]
+        : user.tag;
+
+    return [
+        `User ${canonicalLabel} (${user.id})`,
+        `User ${normalizeThreadLabel(tagLabel ?? "")} (${user.id})`,
+        `User ${user.username} (${user.id})`,
+        `User ${user.tag} (${user.id})`,
+        `User ${tagLabel} (${user.id})`,
+        `User ${user.username}`,
+        `User ${user.tag}`,
+        `User ${tagLabel}`
+    ].filter((candidate, index, allCandidates) => Boolean(candidate) && allCandidates.indexOf(candidate) === index);
+}
+
+function isMatchingUserThread(
+    thread: ThreadChannel,
+    user: Pick<User, "tag" | "username" | "id">
+) {
+    const name = thread.name?.toLowerCase() ?? "";
+
+    const candidates = getUserThreadCandidates(user).map(candidate => candidate.toLowerCase());
+
+    const nameMatches = candidates.some(candidate => (
+        name === candidate ||
+        name.includes(candidate) ||
+        candidate.includes(name)
+    ));
+
+    if (nameMatches) {
+        return true;
+    }
+
+    const starterMessage = thread.messages.cache.first();
+    const starterText = starterMessage?.content?.toLowerCase() ?? "";
+
+    return (
+        starterText.includes(user.id) ||
+        starterText.includes(user.tag.toLowerCase()) ||
+        starterText.includes(user.username.toLowerCase())
+    );
+}
+
+async function mergeDuplicateUserThreads(
+    threads: ThreadChannel[],
+    canonicalThread: ThreadChannel,
+    canonicalName: string
+) {
+    if (canonicalThread.name !== canonicalName) {
+        await canonicalThread.setName(
+            canonicalName,
+            "Normalize user log thread name"
+        ).catch(() => undefined);
+    }
+
+    const duplicateThreads = threads.filter(thread => thread.id !== canonicalThread.id);
+
+    await Promise.all(
+        duplicateThreads.map(thread =>
+            thread.setArchived(
+                true,
+                "Merged into canonical user log thread"
+            ).catch(() => undefined)
+        )
+    );
+}
+
 export function isPlayerLeftEmbedTitle(
     title: string | null | undefined
 ) {
@@ -430,10 +521,7 @@ export function buildUserThreadName(
     user: Pick<User, "tag" | "username" | "id">
 ): string {
 
-    const usernameBase =
-        user.tag.includes("#")
-            ? user.tag.split("#")[0]
-            : user.tag;
+    const usernameBase = getUserThreadLabel(user);
 
     return `User ${usernameBase} (${user.id})`;
 }
@@ -449,15 +537,7 @@ export async function findUserThread(
     const forums =
         await getModerationLogForums(guild);
 
-    const candidates = [
-        buildUserThreadName(user),
-        `User ${user.username} (${user.id})`,
-        `User ${user.tag} (${user.id})`,
-        `User ${user.tag.split("#")[0]} (${user.id})`,
-        `User ${user.username}`,
-        `User ${user.tag}`,
-        `User ${user.tag.split("#")[0]}`
-    ].filter(Boolean);
+    const canonicalThreadName = buildUserThreadName(user);
 
     for (const forum of forums) {
 
@@ -466,44 +546,24 @@ export async function findUserThread(
         const matchingThread =
             forum.threads.cache.find(thread => {
 
-                const name =
-                    thread.name?.toLowerCase() ?? "";
-
-                const nameMatches =
-                    candidates.some(candidate => {
-
-                        const normalizedCandidate =
-                            candidate.toLowerCase();
-
-                        return (
-                            name === normalizedCandidate ||
-                            name.includes(normalizedCandidate) ||
-                            normalizedCandidate.includes(name)
-                        );
-                    });
-
-                if (nameMatches) {
-                    return true;
-                }
-
-                const starterMessage =
-                    thread.messages.cache.first();
-
-                const starterText =
-                    starterMessage?.content?.toLowerCase() ?? "";
-
-                return (
-                    starterText.includes(user.id) ||
-                    starterText.includes(
-                        user.tag.toLowerCase()
-                    ) ||
-                    starterText.includes(
-                        user.username.toLowerCase()
-                    )
-                );
+                return isMatchingUserThread(thread, user);
             });
 
         if (matchingThread) {
+
+            if (matchingThread.name !== canonicalThreadName) {
+                const canonicalMatch = forum.threads.cache.find(thread =>
+                    thread.name === canonicalThreadName
+                );
+
+                if (!canonicalMatch) {
+                    await matchingThread.setName(
+                        canonicalThreadName,
+                        "Normalize user log thread name"
+                    ).catch(() => undefined);
+                }
+            }
+
             return matchingThread;
         }
     }
@@ -527,13 +587,23 @@ export async function ensureUserThread(
     const threadName =
         buildUserThreadName(user);
 
+    const matchingThreads = [...forumChannel.threads.cache.values()].filter(thread =>
+        isMatchingUserThread(thread, user)
+    );
+
     const existingThread =
-        forumChannel.threads.cache.find(
-            thread =>
-                thread.name === threadName
-        );
+        forumChannel.threads.cache.find(thread => thread.name === threadName) ??
+        matchingThreads.find(thread => thread.name !== undefined && !thread.name.toLowerCase().includes("(roblox)")) ??
+        matchingThreads[0];
 
     if (existingThread) {
+
+        await mergeDuplicateUserThreads(
+            matchingThreads,
+            existingThread,
+            threadName
+        );
+
         return existingThread;
     }
 
@@ -669,13 +739,23 @@ export async function ensureUserThreadInForum(
     const threadName =
         buildUserThreadName(user);
 
+    const matchingThreads = [...forum.threads.cache.values()].filter(thread =>
+        isMatchingUserThread(thread, user)
+    );
+
     const existingThread =
-        forum.threads.cache.find(
-            thread =>
-                thread.name === threadName
-        );
+        forum.threads.cache.find(thread => thread.name === threadName) ??
+        matchingThreads.find(thread => thread.name !== undefined && !thread.name.toLowerCase().includes("(roblox)")) ??
+        matchingThreads[0];
 
     if (existingThread) {
+
+        await mergeDuplicateUserThreads(
+            matchingThreads,
+            existingThread,
+            threadName
+        );
+
         return existingThread;
     }
 
