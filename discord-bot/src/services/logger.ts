@@ -1032,7 +1032,7 @@ export async function logServerCommandUsage(
                 : "(no args)";
 
         const content =
-            `/${commandName} by ${user.username} (${user.id}) | args: ${argsLabel}`;
+            `;${commandName} by ${user.username} (${user.id}) | args: ${argsLabel}`;
 
         await targetChannel.send({
             content:

@@ -1,28 +1,24 @@
-import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder, TimestampStyles, time } from "discord.js";
-import { logUserEvent } from "../services/logger.js";
+import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
+import {
+    buildModerationPayload,
+    forwardModerationToBackend,
+    resolveRobloxUserIdByUsername
+} from "../services/robloxBridge.js";
 
 export const data = new SlashCommandBuilder()
     .setName("mute")
-    .setDescription("Timeout a member from this server")
-    .addUserOption(option =>
+    .setDescription("Mute a Roblox player in-game (blocks chat)")
+    .addStringOption(option =>
         option
-            .setName("user")
-            .setDescription("The member to timeout")
+            .setName("roblox_username")
+            .setDescription("Roblox username to mute")
             .setRequired(true)
-    )
-    .addIntegerOption(option =>
-        option
-            .setName("minutes")
-            .setDescription("Timeout duration in minutes")
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(10080)
     )
     .addStringOption(option =>
         option
             .setName("reason")
-            .setDescription("Reason for the timeout")
+            .setDescription("Reason for the mute")
             .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -46,62 +42,57 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const targetUser = interaction.options.getUser("user", true);
-    const minutes = interaction.options.getInteger("minutes", true);
+    const robloxUsername = interaction.options.getString("roblox_username", true).trim();
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
-    if (targetUser.id === interaction.user.id) {
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
-            content: "⚠️ You cannot timeout yourself.",
+            content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
             flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
+    const robloxUserId = await resolveRobloxUserIdByUsername(robloxUsername);
 
-    if (!targetMember) {
+    if (!robloxUserId) {
         await interaction.reply({
-            content: "⚠️ I could not find that member.",
+            content: "⚠️ I could not find that Roblox username.",
             flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    if (!targetMember.moderatable) {
-        await interaction.reply({
-            content: "⚠️ I cannot timeout that member.",
-            flags: MessageFlags.Ephemeral
-        });
-        return;
-    }
-
-    const timeoutDurationMs = minutes * 60 * 1000;
-    const timeoutUntil = new Date(Date.now() + timeoutDurationMs);
-
-    await targetMember.timeout(timeoutDurationMs, reason);
-
-    const formattedUntil = time(timeoutUntil, TimestampStyles.RelativeTime);
-
-    await logUserEvent(
-        guild,
-        targetUser,
-        "User Timed Out",
-        `Timed out by ${interaction.user.tag} for ${minutes} minute(s) for: ${reason}. Ends ${formattedUntil}`
-    );
-
-    await recordModerationEvent(guild, {
-        type: "mute",
-        guildId: guild.id,
-        guildName: guild.name,
-        targetUserId: targetUser.id,
-        targetUserTag: targetUser.tag,
-        moderatorId: interaction.user.id,
-        moderatorTag: interaction.user.tag,
-        reason: `Muted for ${minutes} minute(s): ${reason}`
+    const payload = buildModerationPayload({
+        action: "mute",
+        targetUserId: robloxUserId,
+        targetUsername: robloxUsername,
+        reason,
+        moderator: interaction.user.tag
     });
 
-    await interaction.reply({
-        content: `✅ Timed out ${targetUser.tag} for ${minutes} minute(s) for: ${reason}`
-    });
+    try {
+        await forwardModerationToBackend(payload);
+
+        await recordModerationEvent(guild, {
+            type: "mute",
+            guildId: guild.id,
+            guildName: guild.name,
+            targetUserId: robloxUserId,
+            targetUserTag: `${robloxUsername} (Roblox)`,
+            moderatorId: interaction.user.id,
+            moderatorTag: interaction.user.tag,
+            reason
+        });
+
+        await interaction.reply({
+            content: `✅ Queued an in-game mute for ${robloxUsername} for: ${reason}`
+        });
+    } catch (error) {
+        console.error("Failed to queue Roblox mute", error);
+        await interaction.reply({
+            content: "⚠️ Failed to queue the mute action.",
+            flags: MessageFlags.Ephemeral
+        });
+    }
 }

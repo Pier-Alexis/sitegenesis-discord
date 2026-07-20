@@ -1,20 +1,24 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import { logUserEvent } from "../services/logger.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
+import {
+    buildModerationPayload,
+    forwardModerationToBackend,
+    resolveRobloxUserIdByUsername
+} from "../services/robloxBridge.js";
 
 export const data = new SlashCommandBuilder()
     .setName("unmute")
-    .setDescription("Remove a timeout from a member")
-    .addUserOption(option =>
+    .setDescription("Unmute a Roblox player in-game")
+    .addStringOption(option =>
         option
-            .setName("user")
-            .setDescription("The member to untimeout")
+            .setName("roblox_username")
+            .setDescription("Roblox username to unmute")
             .setRequired(true)
     )
     .addStringOption(option =>
         option
             .setName("reason")
-            .setDescription("Reason for removing the timeout")
+            .setDescription("Reason for unmuting")
             .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -38,46 +42,56 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    const targetUser = interaction.options.getUser("user", true);
+    const robloxUsername = interaction.options.getString("roblox_username", true).trim();
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
-    const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
-
-    if (!targetMember) {
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
-            content: "⚠️ I could not find that member.",
+            content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
             flags: MessageFlags.Ephemeral
         });
         return;
     }
 
-    try {
-        await targetMember.timeout(null, reason);
+    const robloxUserId = await resolveRobloxUserIdByUsername(robloxUsername);
 
-        await logUserEvent(
-            guild,
-            targetUser,
-            "User Unmuted",
-            `Timeout removed by ${interaction.user.tag} for: ${reason}`
-        );
+    if (!robloxUserId) {
+        await interaction.reply({
+            content: "⚠️ I could not find that Roblox username.",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const payload = buildModerationPayload({
+        action: "unmute",
+        targetUserId: robloxUserId,
+        targetUsername: robloxUsername,
+        reason,
+        moderator: interaction.user.tag
+    });
+
+    try {
+        await forwardModerationToBackend(payload);
 
         await recordModerationEvent(guild, {
             type: "unmute",
             guildId: guild.id,
             guildName: guild.name,
-            targetUserId: targetUser.id,
-            targetUserTag: targetUser.tag,
+            targetUserId: robloxUserId,
+            targetUserTag: `${robloxUsername} (Roblox)`,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
             reason
         });
 
         await interaction.reply({
-            content: `✅ Removed the timeout from ${targetUser.tag}`
+            content: `✅ Queued an in-game unmute for ${robloxUsername}`
         });
     } catch (error) {
+        console.error("Failed to queue Roblox unmute", error);
         await interaction.reply({
-            content: "⚠️ I could not remove that timeout.",
+            content: "⚠️ Failed to queue the unmute action.",
             flags: MessageFlags.Ephemeral
         });
     }

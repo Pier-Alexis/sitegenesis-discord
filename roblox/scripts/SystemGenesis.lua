@@ -109,6 +109,10 @@ Players.PlayerAdded:Connect(function(player)
 
 	player.Chatted:Connect(function(message)
 
+		if player:GetAttribute("IsMutedFromModeration") == true then
+			return
+		end
+
 		if player:GetAttribute("DisableChatLoggingSession") == true then
 			return
 		end
@@ -334,13 +338,63 @@ local function applyModerationAction(action)
 		return
 	end
 
-	if actionType == "unban" or actionType == "mute" or actionType == "unmute" or actionType == "warn" then
+	if actionType == "mute" then
+		if player then
+			player:SetAttribute("IsMutedFromModeration", true)
+		end
+		return
+	end
+
+	if actionType == "unmute" then
+		if player then
+			player:SetAttribute("IsMutedFromModeration", false)
+		end
+		return
+	end
+
+	if actionType == "unban" or actionType == "warn" then
 		warn("Action received but no in-server handler defined for:", actionType)
 		return
 	end
 
 	warn("Unsupported moderation action:", actionType)
 end
+-- // Attempt to save an event if it's not sent to the server
+local eventQueue = {}
+
+local function sendEvent(data)
+	local success, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = API_URL,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json",
+				["x-api-key"] = API_KEY
+			},
+			Body = HttpService:JSONEncode(data)
+		})
+	end)
+
+	if success and response.Success then
+		print("Event sent:", response.StatusCode)
+	else
+		warn("Failed sending event, queuing for retry")
+		table.insert(eventQueue, data)
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(10)
+		if #eventQueue > 0 then
+			local pending = eventQueue
+			eventQueue = {}
+			for _, data in pending do
+				sendEvent(data)
+			end
+		end
+	end
+end)
 
 task.spawn(function()
 	while true do
