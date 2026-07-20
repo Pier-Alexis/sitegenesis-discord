@@ -121,6 +121,20 @@ async function mergeDuplicateUserThreads(
     );
 }
 
+async function fetchAllForumThreads(forum: ForumChannel) {
+    const activeThreads = await forum.threads.fetchActive();
+    const archivedThreads = await forum.threads.fetchArchived({
+        fetchAll: true
+    });
+
+    return [
+        ...activeThreads.threads.values(),
+        ...archivedThreads.threads.values()
+    ].filter((thread, index, allThreads) =>
+        allThreads.findIndex(candidate => candidate.id === thread.id) === index
+    );
+}
+
 export function isPlayerLeftEmbedTitle(
     title: string | null | undefined
 ) {
@@ -541,10 +555,10 @@ export async function findUserThread(
 
     for (const forum of forums) {
 
-        await forum.threads.fetch();
+        const allThreads = await fetchAllForumThreads(forum);
 
         const matchingThread =
-            forum.threads.cache.find(thread => {
+            allThreads.find(thread => {
 
                 return isMatchingUserThread(thread, user);
             });
@@ -552,7 +566,7 @@ export async function findUserThread(
         if (matchingThread) {
 
             if (matchingThread.name !== canonicalThreadName) {
-                const canonicalMatch = forum.threads.cache.find(thread =>
+                const canonicalMatch = allThreads.find(thread =>
                     thread.name === canonicalThreadName
                 );
 
@@ -562,6 +576,13 @@ export async function findUserThread(
                         "Normalize user log thread name"
                     ).catch(() => undefined);
                 }
+            }
+
+            if (matchingThread.archived) {
+                await matchingThread.setArchived(
+                    false,
+                    "Restore canonical user log thread"
+                ).catch(() => undefined);
             }
 
             return matchingThread;
@@ -582,21 +603,28 @@ export async function ensureUserThread(
     const forumChannel =
         await ensureModerationLogForum(guild);
 
-    await forumChannel.threads.fetch();
+    const allThreads = await fetchAllForumThreads(forumChannel);
 
     const threadName =
         buildUserThreadName(user);
 
-    const matchingThreads = [...forumChannel.threads.cache.values()].filter(thread =>
+    const matchingThreads = allThreads.filter(thread =>
         isMatchingUserThread(thread, user)
     );
 
     const existingThread =
-        forumChannel.threads.cache.find(thread => thread.name === threadName) ??
+        allThreads.find(thread => thread.name === threadName) ??
         matchingThreads.find(thread => thread.name !== undefined && !thread.name.toLowerCase().includes("(roblox)")) ??
         matchingThreads[0];
 
     if (existingThread) {
+
+        if (existingThread.archived) {
+            await existingThread.setArchived(
+                false,
+                "Restore canonical user log thread"
+            ).catch(() => undefined);
+        }
 
         await mergeDuplicateUserThreads(
             matchingThreads,
@@ -734,21 +762,28 @@ export async function ensureUserThreadInForum(
     user: User
 ): Promise<ThreadChannel> {
 
-    await forum.threads.fetch();
+    const allThreads = await fetchAllForumThreads(forum);
 
     const threadName =
         buildUserThreadName(user);
 
-    const matchingThreads = [...forum.threads.cache.values()].filter(thread =>
+    const matchingThreads = allThreads.filter(thread =>
         isMatchingUserThread(thread, user)
     );
 
     const existingThread =
-        forum.threads.cache.find(thread => thread.name === threadName) ??
+        allThreads.find(thread => thread.name === threadName) ??
         matchingThreads.find(thread => thread.name !== undefined && !thread.name.toLowerCase().includes("(roblox)")) ??
         matchingThreads[0];
 
     if (existingThread) {
+
+        if (existingThread.archived) {
+            await existingThread.setArchived(
+                false,
+                "Restore canonical user log thread"
+            ).catch(() => undefined);
+        }
 
         await mergeDuplicateUserThreads(
             matchingThreads,
