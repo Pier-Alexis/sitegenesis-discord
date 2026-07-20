@@ -43,6 +43,14 @@ type RobloxRolesResponse = {
     nextPageToken?: string;
 };
 
+type RobloxMembershipResource = {
+    path?: string;
+    user?: string;
+    role?: unknown;
+    etag?: string;
+    [key: string]: unknown;
+};
+
 const ROBLOX_OPEN_CLOUD_BASE = "https://apis.roblox.com/cloud/v2";
 
 let workerHandle: NodeJS.Timeout | null = null;
@@ -400,13 +408,65 @@ async function executeCommunityAction(
         `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
         `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
 
+    const currentMembership = await robloxRequest<RobloxMembershipResource>(
+        config,
+        membershipPath
+    );
+
+    const currentRole = currentMembership.role;
+    const resolvedCurrentPath =
+        currentMembership.path ??
+        `groups/${config.groupId}/memberships/${membershipId}`;
+
+    const roleAsStringPayload = {
+        ...currentMembership,
+        path: resolvedCurrentPath,
+        role: rolePath
+    };
+
+    const roleAsObjectPayload = {
+        ...currentMembership,
+        path: resolvedCurrentPath,
+        role: {
+            ...(typeof currentRole === "object" && currentRole !== null
+                ? currentRole as Record<string, unknown>
+                : {}),
+            path: rolePath,
+            id: roleId.toString()
+        }
+    };
+
+    const etagHeader =
+        typeof currentMembership.etag === "string" && currentMembership.etag.length > 0
+            ? { "If-Match": currentMembership.etag }
+            : undefined;
+
     const patchAttempts = [
+        {
+            label: "membership-as-returned + role string + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: roleAsStringPayload,
+            headers: etagHeader
+        },
+        {
+            label: "membership-as-returned + role object + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: roleAsObjectPayload,
+            headers: etagHeader
+        },
+        {
+            label: "membership-as-returned + role object + role.path updateMask",
+            url: `${membershipPath}?updateMask=role.path`,
+            body: roleAsObjectPayload,
+            headers: etagHeader
+        },
         {
             label: "direct role string + updateMask",
             url: `${membershipPath}?updateMask=role`,
             body: {
                 role: rolePath
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "direct role string + body updateMask",
@@ -414,14 +474,16 @@ async function executeCommunityAction(
             body: {
                 role: rolePath,
                 updateMask: "role"
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "direct role string + update_mask",
             url: `${membershipPath}?update_mask=role`,
             body: {
                 role: rolePath
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "full membership body + updateMask",
@@ -429,7 +491,8 @@ async function executeCommunityAction(
             body: {
                 path: `groups/${config.groupId}/memberships/${membershipId}`,
                 role: rolePath
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "full membership body + body updateMask",
@@ -438,7 +501,8 @@ async function executeCommunityAction(
                 path: `groups/${config.groupId}/memberships/${membershipId}`,
                 role: rolePath,
                 updateMask: "role"
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "groupMembership wrapper + updateMask",
@@ -447,7 +511,8 @@ async function executeCommunityAction(
                 groupMembership: {
                     role: rolePath
                 }
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "direct role object + updateMask",
@@ -456,7 +521,8 @@ async function executeCommunityAction(
                 role: {
                     path: rolePath
                 }
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "role object id + updateMask",
@@ -466,21 +532,24 @@ async function executeCommunityAction(
                     id: roleId.toString(),
                     path: rolePath
                 }
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "short role path + updateMask",
             url: `${membershipPath}?updateMask=role`,
             body: {
                 role: `roles/${roleId}`
-            }
+            },
+            headers: etagHeader
         },
         {
             label: "direct role string (no mask)",
             url: membershipPath,
             body: {
                 role: rolePath
-            }
+            },
+            headers: etagHeader
         }
     ] as const;
 
@@ -499,6 +568,7 @@ async function executeCommunityAction(
                 attempt.url,
                 {
                     method: "PATCH",
+                    headers: attempt.headers,
                     body: JSON.stringify(attempt.body)
                 }
             );
