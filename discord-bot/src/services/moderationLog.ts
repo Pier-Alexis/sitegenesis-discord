@@ -118,7 +118,18 @@ function isLegacyModerationEmbed(message: Message<boolean>): boolean {
     const isActivityEmbed = fieldNames.includes("user") || fieldNames.includes("details");
     const isNewFormat = isNewModerationEmbed(message);
 
-    return hasModerationFields && !isActivityEmbed && !isNewFormat && title.includes("mod") || title.includes("ban") || title.includes("warn") || title.includes("mute") || title.includes("unban") || title.includes("unmute");
+    const hasLegacyModerationTitle = [
+        "mod",
+        "ban",
+        "warn",
+        "mute",
+        "unban",
+        "unmute",
+        "kick",
+        "softban"
+    ].some(keyword => title.includes(keyword));
+
+    return hasModerationFields && !isActivityEmbed && !isNewFormat && hasLegacyModerationTitle;
 }
 
 function getEventTypeFromMessage(message: Message<boolean>): ModerationEventType | null {
