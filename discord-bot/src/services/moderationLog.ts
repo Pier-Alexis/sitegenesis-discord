@@ -15,7 +15,25 @@ export type ModerationEvent = {
     reason: string;
     createdAt: string;
     dmSent?: boolean;
+    currentRanks?: string[];
+    newRank?: string;
 };
+
+function truncateFieldValue(value: string, maxLength = 1024) {
+    if (value.length <= maxLength) {
+        return value;
+    }
+
+    return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function formatRanksFieldValue(ranks: string[]) {
+    if (!ranks.length) {
+        return "Unknown";
+    }
+
+    return truncateFieldValue(ranks.join("\n"));
+}
 
 function getActionLabel(type: ModerationEventType) {
     switch (type) {
@@ -129,6 +147,19 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
     const userTag = targetUser?.tag ?? event.targetUserTag;
     const thread = await ensureUserThread(guild, targetUser ?? ({ tag: userTag, id: event.targetUserId } as any));
 
+    const rankFields = event.type === "setgrouprank"
+        ? [
+            {
+                name: "Current Rank(s)",
+                value: formatRanksFieldValue(event.currentRanks ?? [])
+            },
+            {
+                name: "New Rank",
+                value: truncateFieldValue(event.newRank ?? "Unknown")
+            }
+        ]
+        : [];
+
     const embed = new EmbedBuilder()
         .setTitle(`🛡️ ${getActionLabel(event.type)}`)
         .setColor(getActionColor(event.type))
@@ -139,6 +170,7 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
             { name: "Moderator", value: event.moderatorTag },
             { name: "Moderator ID", value: event.moderatorId },
             { name: "Reason", value: event.reason },
+            ...rankFields,
             { name: "Guild", value: event.guildName }
         )
         .setTimestamp();

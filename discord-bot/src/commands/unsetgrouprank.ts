@@ -2,27 +2,45 @@ import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCo
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { buildModerationPayload, forwardModerationToBackend, resolveRobloxRankContext } from "../services/robloxBridge.js";
 
+function resolveTargetRoleId(interactionRoleId: number | null) {
+    if (interactionRoleId !== null) {
+        return interactionRoleId;
+    }
+
+    const envRoleId = process.env.ROBLOX_DEMOTION_ROLE_ID?.trim();
+    if (!envRoleId) {
+        return null;
+    }
+
+    const parsed = Number(envRoleId);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return null;
+    }
+
+    return parsed;
+}
+
 export const data = new SlashCommandBuilder()
-    .setName("setgrouprank")
-    .setDescription("Queue a Roblox community/group role change")
+    .setName("unsetgrouprank")
+    .setDescription("Queue a Roblox community/group demotion")
     .addStringOption(option =>
         option
             .setName("roblox_username")
-            .setDescription("Roblox username to update")
+            .setDescription("Roblox username to demote")
             .setRequired(true)
     )
     .addIntegerOption(option =>
         option
             .setName("role_id")
-            .setDescription("Target Roblox group role ID")
-            .setRequired(true)
+            .setDescription("Target Roblox group role ID after demotion")
+            .setRequired(false)
             .setMinValue(1)
             .setMaxValue(1000000000)
     )
     .addStringOption(option =>
         option
             .setName("reason")
-            .setDescription("Reason for the rank change")
+            .setDescription("Reason for the demotion")
             .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
@@ -47,9 +65,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const robloxUsername = interaction.options.getString("roblox_username", true).trim();
-    const roleId = interaction.options.getInteger("role_id", true);
+    const roleId = resolveTargetRoleId(interaction.options.getInteger("role_id"));
     const reason = interaction.options.getString("reason") ?? "No reason provided";
-    const configuredGroupId = process.env.ROBLOX_GROUP_ID?.trim();
 
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
@@ -58,6 +75,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         });
         return;
     }
+
+    if (!roleId) {
+        await interaction.reply({
+            content: "⚠️ Provide role_id or set ROBLOX_DEMOTION_ROLE_ID in environment.",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    const configuredGroupId = process.env.ROBLOX_GROUP_ID?.trim();
 
     const payload = buildModerationPayload({
         action: "setGroupRank",
@@ -97,18 +124,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             targetUserTag: `${robloxUsername} (Roblox)`,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
-            reason: `Set role to ${newRankLabel}. ${reason}`,
+            reason: `Demoted to ${newRankLabel}. ${reason}`,
             currentRanks: rankContext.currentRanks,
             newRank: newRankLabel
         });
 
         await interaction.reply({
-            content: `✅ Queued role change for ${robloxUsername} to ${newRankLabel}.`
+            content: `✅ Queued demotion for ${robloxUsername} to ${newRankLabel}.`
         });
     } catch (error) {
-        console.error("Failed to queue rank change", error);
+        console.error("Failed to queue demotion", error);
         await interaction.reply({
-            content: "⚠️ Failed to queue the rank change action.",
+            content: "⚠️ Failed to queue the demotion action.",
             flags: MessageFlags.Ephemeral
         });
     }

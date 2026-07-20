@@ -5,9 +5,10 @@ import * as mute from "./mute.js";
 import * as playersearch from "./playersearch.js";
 import * as softban from "./softban.js";
 import * as unban from "./unban.js";
+import * as unsetgrouprank from "./unsetgrouprank.js";
 import * as unmute from "./unmute.js";
 import * as warn from "./warn.js";
-import * as setgrouprank from "./setgrouprank.js";
+import * as setgrouprank from "./setgroupranks.js";
 
 export const commandModules = [
 	ban,
@@ -19,7 +20,8 @@ export const commandModules = [
 	modlogs,
 	caseCommand,
 	playersearch,
-	setgrouprank
+	setgrouprank,
+	unsetgrouprank
 ] as const;
 
 export const commandData = commandModules.map(command => command.data.toJSON());
