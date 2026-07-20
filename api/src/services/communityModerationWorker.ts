@@ -20,9 +20,9 @@ type WorkerConfig = {
     pollIntervalMs: number;
     groupId: string;
     apiKey: string;
-    setGroupRankEndpointTemplate: string;
-    setGroupRankMethod: string;
 };
+
+const ROBLOX_OPEN_CLOUD_BASE = "https://apis.roblox.com/cloud/v2";
 
 let workerHandle: NodeJS.Timeout | null = null;
 
@@ -49,9 +49,7 @@ function buildWorkerConfig(): WorkerConfig {
         enabled: parseBoolean(process.env.COMMUNITY_MODERATION_ENABLED),
         pollIntervalMs: parsePositiveInt(process.env.COMMUNITY_MODERATION_INTERVAL_MS, 5000),
         groupId: process.env.ROBLOX_GROUP_ID ?? "",
-        apiKey: process.env.ROBLOX_OPEN_CLOUD_API_KEY ?? "",
-        setGroupRankEndpointTemplate: process.env.ROBLOX_SET_GROUP_RANK_ENDPOINT_TEMPLATE ?? "",
-        setGroupRankMethod: process.env.ROBLOX_SET_GROUP_RANK_METHOD ?? "PATCH"
+        apiKey: process.env.ROBLOX_OPEN_CLOUD_API_KEY ?? ""
     };
 }
 
@@ -66,10 +64,6 @@ function validateConfig(config: WorkerConfig) {
 
     if (!config.apiKey) {
         return { ok: false as const, reason: "ROBLOX_OPEN_CLOUD_API_KEY is missing." };
-    }
-
-    if (!config.setGroupRankEndpointTemplate) {
-        return { ok: false as const, reason: "Missing endpoint template for setGroupRank." };
     }
 
     return { ok: true as const };
@@ -92,15 +86,52 @@ function parseMetadata(raw: string | null): ActionMetadata {
     }
 }
 
-function buildEndpointUrl(template: string, groupId: string, userId: string) {
-    return template
-        .replaceAll("{groupId}", encodeURIComponent(groupId))
-        .replaceAll("{userId}", encodeURIComponent(userId));
+/**
+ * Look up a member's Open Cloud membershipId from their Roblox userId.
+ *
+ * The Groups v2 API does NOT accept a userId directly on the membership
+ * resource path — it requires the internal membershipId, found via the
+ * List Group Memberships endpoint filtered by user.
+ *
+ * Doc: https://create.roblox.com/docs/cloud/reference/features/groups
+ */
+async function resolveMembershipId(config: WorkerConfig, userId: string): Promise<string> {
+    const filter = encodeURIComponent(`user == 'users/${userId}'`);
+    const url = `${ROBLOX_OPEN_CLOUD_BASE}/groups/${config.groupId}/memberships?maxPageSize=1&filter=${filter}`;
+
+    const response = await fetch(url, {
+        method: "GET",
+        headers: {
+            "x-api-key": config.apiKey
+        }
+    });
+
+    if (!response.ok) {
+        const responseText = await response.text().catch(() => "");
+        throw new Error(`Failed to look up membership (${response.status}): ${responseText}`);
+    }
+
+    const payload = await response.json() as {
+        groupMemberships?: Array<{ path?: string }>;
+    };
+
+    const path = payload.groupMemberships?.[0]?.path;
+
+    if (!path) {
+        throw new Error(`User ${userId} is not a member of group ${config.groupId}`);
+    }
+
+    // path format: groups/{groupId}/memberships/{membershipId}
+    const membershipId = path.split("/")[3];
+
+    if (!membershipId) {
+        throw new Error(`Could not parse membershipId from path: ${path}`);
+    }
+
+    return membershipId;
 }
 
 async function executeCommunityAction(config: WorkerConfig, row: ModerationActionRow) {
-    const endpointUrl = buildEndpointUrl(config.setGroupRankEndpointTemplate, config.groupId, row.userId);
-    const method = config.setGroupRankMethod.toUpperCase();
     const metadata = parseMetadata(row.metadata);
     const roleId = metadata.roleId ?? metadata.rank;
 
@@ -108,21 +139,21 @@ async function executeCommunityAction(config: WorkerConfig, row: ModerationActio
         throw new Error("setGroupRank action is missing metadata.roleId");
     }
 
-    const response = await fetch(endpointUrl, {
-        method,
-        headers: {
-            "Content-Type": "application/json",
-            "x-api-key": config.apiKey
-        },
-        body: JSON.stringify({
-            groupId: config.groupId,
-            userId: row.userId,
-            username: row.username,
-            reason: row.reason,
-            moderator: row.moderator,
-            roleId
-        })
-    });
+    const membershipId = await resolveMembershipId(config, row.userId);
+
+    const response = await fetch(
+        `${ROBLOX_OPEN_CLOUD_BASE}/groups/${config.groupId}/memberships/${membershipId}`,
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": config.apiKey
+            },
+            body: JSON.stringify({
+                role: `groups/${config.groupId}/roles/${roleId}`
+            })
+        }
+    );
 
     if (!response.ok) {
         const responseText = await response.text().catch(() => "");
