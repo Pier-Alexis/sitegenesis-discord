@@ -402,18 +402,38 @@ async function executeCommunityAction(
 
     const patchAttempts = [
         {
+            label: "direct role string + updateMask",
             url: `${membershipPath}?updateMask=role`,
             body: {
                 role: rolePath
             }
         },
         {
-            url: membershipPath,
+            label: "direct role string + update_mask",
+            url: `${membershipPath}?update_mask=role`,
             body: {
                 role: rolePath
             }
         },
         {
+            label: "full membership body + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: {
+                path: `groups/${config.groupId}/memberships/${membershipId}`,
+                role: rolePath
+            }
+        },
+        {
+            label: "groupMembership wrapper + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: {
+                groupMembership: {
+                    role: rolePath
+                }
+            }
+        },
+        {
+            label: "direct role object + updateMask",
             url: `${membershipPath}?updateMask=role`,
             body: {
                 role: {
@@ -422,11 +442,10 @@ async function executeCommunityAction(
             }
         },
         {
+            label: "direct role string (no mask)",
             url: membershipPath,
             body: {
-                role: {
-                    path: rolePath
-                }
+                role: rolePath
             }
         }
     ] as const;
@@ -435,6 +454,11 @@ async function executeCommunityAction(
 
     for (const attempt of patchAttempts) {
         try {
+            console.log(
+                `[CommunityWorker] Attempting membership PATCH ` +
+                `(${attempt.label}) for action ${row.id}`
+            );
+
             await robloxRequest(
                 config,
                 attempt.url,
@@ -444,9 +468,20 @@ async function executeCommunityAction(
                 }
             );
 
+            console.log(
+                `[CommunityWorker] Membership PATCH succeeded ` +
+                `(${attempt.label}) for action ${row.id}`
+            );
+
             lastPatchError = null;
             break;
         } catch (error) {
+            console.error(
+                `[CommunityWorker] Membership PATCH failed ` +
+                `(${attempt.label}) for action ${row.id}`,
+                error
+            );
+
             lastPatchError = error;
         }
     }
