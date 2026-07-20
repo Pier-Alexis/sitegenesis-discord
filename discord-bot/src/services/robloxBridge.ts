@@ -229,7 +229,10 @@ export async function forwardModerationToBackend(payload: RobloxModerationPayloa
     });
 
     if (!response.ok) {
-        throw new Error(`Backend moderation request failed: ${response.status}`);
+        const errorText = await response.text().catch(() => "");
+        throw new Error(
+            `Backend moderation request failed: ${response.status}${errorText ? ` - ${errorText}` : ""}`
+        );
     }
 
     return response.json();
