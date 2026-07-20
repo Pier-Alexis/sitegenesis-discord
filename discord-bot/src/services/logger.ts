@@ -16,6 +16,115 @@ import { config } from "../config.js";
 const LOG_CHANNEL_NAME =
     config.channels.moderationLogs || "user-logs";
 
+const PLAYER_LEFT_TITLES = [
+    "player left",
+    "player leaved"
+];
+
+function normalizeEmbedTitle(title: string | null | undefined) {
+    return title
+        ?.toLowerCase()
+        .replace(/^[^a-z]+|[^a-z]+$/g, "")
+        .trim() ?? "";
+}
+
+export function isPlayerLeftEmbedTitle(
+    title: string | null | undefined
+) {
+    const normalizedTitle = normalizeEmbedTitle(title);
+
+    return PLAYER_LEFT_TITLES.some(
+        playerLeftTitle =>
+            normalizedTitle.includes(playerLeftTitle)
+    );
+}
+
+export function shouldArchiveServerFromLastEmbedTitles(
+    lastEmbedTitles: Array<string | null | undefined>
+) {
+    return (
+        lastEmbedTitles.length > 0 &&
+        lastEmbedTitles.every(isPlayerLeftEmbedTitle)
+    );
+}
+
+async function getLastThreadEmbedTitle(
+    thread: ThreadChannel
+) {
+    const messages =
+        await thread.messages.fetch({
+            limit: 1
+        });
+
+    const lastMessage =
+        messages.first();
+
+    return lastMessage?.embeds[0]?.title;
+}
+
+async function archiveServerCategoryIfEmpty(
+    forum: ForumChannel,
+    serverId: string,
+    serverName: string
+) {
+    const activeThreads =
+        await forum.threads.fetchActive();
+
+    const archivedThreads =
+        await forum.threads.fetchArchived({
+            fetchAll: true
+        });
+
+    const threads =
+        [
+            ...activeThreads.threads.values(),
+            ...archivedThreads.threads.values()
+        ].filter(
+            (thread, index, allThreads) =>
+                allThreads.findIndex(
+                    candidate =>
+                        candidate.id === thread.id
+                ) === index
+        );
+
+    const lastEmbedTitles =
+        await Promise.all(
+            threads.map(getLastThreadEmbedTitle)
+        );
+
+    if (!shouldArchiveServerFromLastEmbedTitles(lastEmbedTitles)) {
+        return false;
+    }
+
+    const categoryName =
+        `${serverName} - ${serverId}`;
+
+    const archivedCategoryName =
+        `(ARCHIVE) ${categoryName}`;
+
+    const category =
+        forum.guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildCategory &&
+                channel.name === categoryName
+        ) as CategoryChannel | undefined;
+
+    if (!category) {
+        return false;
+    }
+
+    await category.setName(
+        archivedCategoryName,
+        "Every player thread ended with Player Left"
+    );
+
+    console.log(
+        `Archived Roblox server category: ${archivedCategoryName}`
+    );
+
+    return true;
+}
+
 /**
  * Send a generic Roblox game event to a text channel.
  */
@@ -496,12 +605,17 @@ export async function logServerUserEvent(
 
     try {
 
-        const thread =
-            await ensureServerUserThread(
+        const forum =
+            await ensureServerLogForum(
                 guild,
-                user,
                 serverId,
                 serverName
+            );
+
+        const thread =
+            await ensureUserThreadInForum(
+                forum,
+                user
             );
 
         const embed =
@@ -529,6 +643,14 @@ export async function logServerUserEvent(
             `Logged "${event}" for ${user.username} ` +
             `in server ${serverName} (${serverId})`
         );
+
+        if (isPlayerLeftEmbedTitle(event)) {
+            await archiveServerCategoryIfEmpty(
+                forum,
+                serverId,
+                serverName
+            );
+        }
 
     } catch (error) {
 
