@@ -31,6 +31,18 @@ local function sendEvent(data)
 end
 
 local function connectRadioLogging(radioChannel)
+	radioChannel.ShouldDeliverCallback = function(textChatMessage, targetTextSource)
+		local textSource = textChatMessage.TextSource
+		if textSource then
+			local sourcePlayer = Players:GetPlayerByUserId(textSource.UserId)
+			if sourcePlayer and sourcePlayer:GetAttribute("IsMutedFromModeration") == true then
+				return false
+			end
+		end
+
+		return true
+	end
+
 	radioChannel.MessageReceived:Connect(function(message)
 		local textSource = message.TextSource
 
@@ -41,6 +53,10 @@ local function connectRadioLogging(radioChannel)
 		local player = Players:GetPlayerByUserId(textSource.UserId)
 
 		if not player then
+			return
+		end
+
+		if player:GetAttribute("IsMutedFromModeration") == true then
 			return
 		end
 

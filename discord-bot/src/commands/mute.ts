@@ -45,6 +45,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const robloxUsername = interaction.options.getString("roblox_username", true).trim();
     const reason = interaction.options.getString("reason") ?? "No reason provided";
 
+    console.log("[mute] Received command", {
+        guildId: guild.id,
+        moderatorId: interaction.user.id,
+        moderatorTag: interaction.user.tag,
+        robloxUsername,
+        reason
+    });
+
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
             content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
@@ -54,6 +62,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const robloxUserId = await resolveRobloxUserIdByUsername(robloxUsername);
+
+    console.log("[mute] Roblox username resolution result", {
+        robloxUsername,
+        robloxUserId
+    });
 
     if (!robloxUserId) {
         await interaction.reply({
@@ -71,8 +84,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         moderator: interaction.user.tag
     });
 
+    console.log("[mute] Sending moderation payload", payload);
+
     try {
-        await forwardModerationToBackend(payload);
+        const backendResponse = await forwardModerationToBackend(payload);
+
+        console.log("[mute] Backend accepted moderation payload", {
+            robloxUsername,
+            robloxUserId,
+            backendResponse
+        });
 
         await recordModerationEvent(guild, {
             type: "mute",
@@ -89,7 +110,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             content: `✅ Queued an in-game mute for ${robloxUsername} for: ${reason}`
         });
     } catch (error) {
-        console.error("Failed to queue Roblox mute", error);
+        console.error("[mute] Failed to queue Roblox mute", {
+            robloxUsername,
+            robloxUserId,
+            error
+        });
         await interaction.reply({
             content: "⚠️ Failed to queue the mute action.",
             flags: MessageFlags.Ephemeral
