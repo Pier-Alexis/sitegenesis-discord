@@ -60,15 +60,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const payload = buildModerationPayload({
-        action: "kick",
+        action: "warn",
         targetUserId: robloxUserId,
         targetUsername: robloxUsername,
-        reason,
+        reason: `${reason} [kick]`,
         moderator: interaction.user.tag
     });
 
     try {
-        await forwardModerationToBackend(payload);
+        await forwardModerationToBackend({
+            ...payload,
+            metadata: {
+                moderationMode: "kick"
+            }
+        });
 
         await recordModerationEvent(guild, {
             type: "kick",
@@ -85,38 +90,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             content: `✅ Queued a kick for ${robloxUsername} for: ${reason}`
         });
     } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-
-        if (message.includes("Unsupported moderation action")) {
-            try {
-                await forwardModerationToBackend({
-                    ...payload,
-                    action: "warn",
-                    metadata: {
-                        moderationMode: "kick"
-                    }
-                });
-
-                await recordModerationEvent(guild, {
-                    type: "kick",
-                    guildId: guild.id,
-                    guildName: guild.name,
-                    targetUserId: robloxUserId,
-                    targetUserTag: `${robloxUsername} (Roblox)`,
-                    moderatorId: interaction.user.id,
-                    moderatorTag: interaction.user.tag,
-                    reason: `${reason} [legacy kick fallback]`
-                });
-
-                await interaction.reply({
-                    content: `✅ Queued a kick for ${robloxUsername} for: ${reason}`
-                });
-                return;
-            } catch (fallbackError) {
-                console.error("Failed to queue Roblox kick via fallback", fallbackError);
-            }
-        }
-
         console.error("Failed to queue Roblox kick", error);
         await interaction.reply({
             content: "⚠️ Failed to queue the kick action.",
