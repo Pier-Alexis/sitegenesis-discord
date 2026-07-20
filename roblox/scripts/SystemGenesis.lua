@@ -109,6 +109,10 @@ Players.PlayerAdded:Connect(function(player)
 
 	player.Chatted:Connect(function(message)
 
+		if player:GetAttribute("DisableChatLoggingSession") == true then
+			return
+		end
+
 		if type(message) ~= "string" then
 			return
 		end
@@ -285,6 +289,18 @@ local function findOnlinePlayerByUserId(userId)
 	return nil
 end
 
+local function getKickReason(action)
+	local reason = tostring(action.reason or "No reason provided")
+	reason = reason:gsub("%s*%[kick%]%s*$", "")
+	reason = reason:gsub("^%s+", ""):gsub("%s+$", "")
+
+	if reason == "" then
+		return "No reason provided"
+	end
+
+	return reason
+end
+
 local function applyModerationAction(action)
 
 	if type(action) ~= "table" then
@@ -293,11 +309,20 @@ local function applyModerationAction(action)
 
 	local actionType = action.action
 	local targetUserId = action.userId
+	local metadata = action.metadata
 	local player = findOnlinePlayerByUserId(targetUserId)
+	local isLegacyKick = type(metadata) == "table" and metadata.moderationMode == "kick"
 
 	if actionType == "ban" then
 		if player then
 			player:Kick("You were banned by the moderation system.")
+		end
+		return
+	end
+
+	if actionType == "kick" or (actionType == "warn" and isLegacyKick) then
+		if player then
+			player:Kick("You were kicked for: " .. getKickReason(action))
 		end
 		return
 	end

@@ -76,7 +76,8 @@ router.post("/roblox/moderation", async (req, res) => {
         "mute",
         "unmute",
         "warn",
-        "setGroupRank"
+        "setGroupRank",
+        "kick"
     ]);
 
     if (!allowedActions.has(action)) {
@@ -91,7 +92,7 @@ router.post("/roblox/moderation", async (req, res) => {
 
     let resolvedUserId = typeof userId === "string" ? userId.trim() : "";
 
-    if (action === "setGroupRank") {
+    if (action === "setGroupRank" || action === "kick") {
         if (!/^\d+$/.test(resolvedUserId)) {
             try {
                 const lookedUpUserId = await resolveRobloxUserIdByUsername(username);

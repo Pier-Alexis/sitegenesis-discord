@@ -23,7 +23,8 @@ export const config = {
         gameEvents: "game-events",
         moderationLogs: process.env.MODERATION_LOGS_CHANNEL ?? "user-logs",
         radioLogs: process.env.RADIO_LOGS_CHANNEL ?? "radiochannel",
-        chatLogs: process.env.CHAT_LOGS_CHANNEL ?? "chatchannel"
+        chatLogs: process.env.CHAT_LOGS_CHANNEL ?? "chatchannel",
+        commandsLogs: process.env.COMMANDS_LOGS_CHANNEL ?? "commands"
     }
 };
 

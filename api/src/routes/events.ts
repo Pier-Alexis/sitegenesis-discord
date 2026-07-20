@@ -37,7 +37,8 @@ router.post("/", async (req, res) => {
             "serverCreated",
             "teamChanged",
             "playerChat",
-            "playerRadioChat"
+            "playerRadioChat",
+            "adminCommandUsed"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
@@ -53,7 +54,8 @@ router.post("/", async (req, res) => {
                 type === "playerJoin" ||
                 type === "playerLeave" ||
                 type === "playerChat" ||
-                type === "playerRadioChat"
+                type === "playerRadioChat" ||
+                type === "adminCommandUsed"
             ) &&
             (!username || !userId || !serverId || !serverName)
         ) {

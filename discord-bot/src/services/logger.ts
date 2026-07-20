@@ -1001,3 +1001,64 @@ export async function logServerChannelChatMessage(
         );
     }
 }
+
+export async function logServerCommandUsage(
+    guild: Guild,
+    user: User,
+    commandName: string,
+    rawArgs: string,
+    serverId: string,
+    serverName: string
+) {
+
+    try {
+
+        const targetChannel =
+            await ensureServerTextChannel(
+                guild,
+                serverId,
+                serverName,
+                config.channels.commandsLogs
+            );
+
+        const normalizedArgs =
+            rawArgs
+                .replace(/\r?\n/g, " ")
+                .trim();
+
+        const argsLabel =
+            normalizedArgs.length > 0
+                ? normalizedArgs
+                : "(no args)";
+
+        const content =
+            `/${commandName} by ${user.username} (${user.id}) | args: ${argsLabel}`;
+
+        await targetChannel.send({
+            content:
+                content.length <= DISCORD_MAX_CONTENT_LENGTH
+                    ? content
+                    : content.slice(0, DISCORD_MAX_CONTENT_LENGTH - 1) + "…"
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log server command usage:",
+            error
+        );
+    }
+}
+
+export async function ensureServerCommandsLogChannel(
+    guild: Guild,
+    serverId: string,
+    serverName: string
+) {
+    return ensureServerTextChannel(
+        guild,
+        serverId,
+        serverName,
+        config.channels.commandsLogs
+    );
+}

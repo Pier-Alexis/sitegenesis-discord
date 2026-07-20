@@ -13,6 +13,8 @@ import {
     logServerUserEvent,
     logServerUserChatMessage,
     logServerChannelChatMessage,
+    logServerCommandUsage,
+    ensureServerCommandsLogChannel,
     ensureServerLogForum
 } from "./services/logger.js";
 
@@ -137,6 +139,7 @@ export function startApi(client: Client) {
                 // - teamChanged
                 // - playerChat
                 // - playerRadioChat
+                // - adminCommandUsed
                 // ==========================================
 
                 if (
@@ -149,6 +152,8 @@ export function startApi(client: Client) {
                             "playerChat" ||
                         event.type ===
                             "playerRadioChat" ||
+                        event.type ===
+                            "adminCommandUsed" ||
                         event.type ===
                             "teamChanged"
                     ) &&
@@ -205,6 +210,22 @@ export function startApi(client: Client) {
                         success: false,
                         message:
                             "Invalid playerChat event payload"
+                    });
+                }
+
+                if (
+                    event.type ===
+                        "adminCommandUsed" &&
+                    (
+                        typeof event.commandName !== "string" ||
+                        event.commandName.trim().length === 0
+                    )
+                ) {
+
+                    return res.status(400).json({
+                        success: false,
+                        message:
+                            "Invalid adminCommandUsed event payload"
                     });
                 }
 
@@ -302,6 +323,12 @@ export function startApi(client: Client) {
                             event.serverName
                         );
 
+                        await ensureServerCommandsLogChannel(
+                            guild,
+                            event.serverId,
+                            event.serverName
+                        );
+
                         return res.json({
                             success: true,
                             created: false,
@@ -341,6 +368,12 @@ export function startApi(client: Client) {
                         );
 
                         await ensureServerLogForum(
+                            guild,
+                            event.serverId,
+                            event.serverName
+                        );
+
+                        await ensureServerCommandsLogChannel(
                             guild,
                             event.serverId,
                             event.serverName
@@ -392,10 +425,23 @@ export function startApi(client: Client) {
                             event.serverName
                         );
 
+                    const commandsChannel =
+                        await ensureServerCommandsLogChannel(
+                            guild,
+                            event.serverId,
+                            event.serverName
+                        );
+
                     console.log(
                         `Created server user-logs forum ` +
                         `"${forum.name}" ` +
                         `(${forum.id})`
+                    );
+
+                    console.log(
+                        `Ensured server commands channel ` +
+                        `"${commandsChannel.name}" ` +
+                        `(${commandsChannel.id})`
                     );
 
                     return res.json({
@@ -404,7 +450,9 @@ export function startApi(client: Client) {
                         categoryId:
                             category.id,
                         forumId:
-                            forum.id
+                            forum.id,
+                        commandsChannelId:
+                            commandsChannel.id
                     });
                 }
 
@@ -507,6 +555,39 @@ export function startApi(client: Client) {
                             radioChannelName:
                                 event.radioChannel
                         }
+                    );
+
+                    return res.json({
+                        success: true
+                    });
+                }
+
+                if (
+                    event.type ===
+                        "adminCommandUsed"
+                ) {
+
+                    const robloxUser = ({
+                        tag:
+                            event.username,
+
+                        username:
+                            event.username,
+
+                        id:
+                            String(event.userId)
+
+                    } as unknown) as User;
+
+                    await logServerCommandUsage(
+                        guild,
+                        robloxUser,
+                        event.commandName,
+                        typeof event.commandArgsRaw === "string"
+                            ? event.commandArgsRaw
+                            : "",
+                        event.serverId,
+                        event.serverName
                     );
 
                     return res.json({
