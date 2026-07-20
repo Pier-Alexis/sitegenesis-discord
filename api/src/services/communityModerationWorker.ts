@@ -409,6 +409,14 @@ async function executeCommunityAction(
             }
         },
         {
+            label: "direct role string + body updateMask",
+            url: membershipPath,
+            body: {
+                role: rolePath,
+                updateMask: "role"
+            }
+        },
+        {
             label: "direct role string + update_mask",
             url: `${membershipPath}?update_mask=role`,
             body: {
@@ -421,6 +429,15 @@ async function executeCommunityAction(
             body: {
                 path: `groups/${config.groupId}/memberships/${membershipId}`,
                 role: rolePath
+            }
+        },
+        {
+            label: "full membership body + body updateMask",
+            url: membershipPath,
+            body: {
+                path: `groups/${config.groupId}/memberships/${membershipId}`,
+                role: rolePath,
+                updateMask: "role"
             }
         },
         {
@@ -442,6 +459,23 @@ async function executeCommunityAction(
             }
         },
         {
+            label: "role object id + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: {
+                role: {
+                    id: roleId.toString(),
+                    path: rolePath
+                }
+            }
+        },
+        {
+            label: "short role path + updateMask",
+            url: `${membershipPath}?updateMask=role`,
+            body: {
+                role: `roles/${roleId}`
+            }
+        },
+        {
             label: "direct role string (no mask)",
             url: membershipPath,
             body: {
@@ -456,7 +490,8 @@ async function executeCommunityAction(
         try {
             console.log(
                 `[CommunityWorker] Attempting membership PATCH ` +
-                `(${attempt.label}) for action ${row.id}`
+                `(${attempt.label}) for action ${row.id} ` +
+                `url=${attempt.url} body=${JSON.stringify(attempt.body)}`
             );
 
             await robloxRequest(
