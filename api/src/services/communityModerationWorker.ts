@@ -1,4 +1,3 @@
-```ts
 import db from "../database/database.js";
 
 type ModerationActionRow = {
@@ -386,18 +385,62 @@ async function executeCommunityAction(
      */
     const membershipPath =
         `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
-        `${config.groupId}/memberships/${membershipId}`;
+        `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
 
-    await robloxRequest(
-        config,
-        membershipPath,
+    const patchAttempts = [
         {
-            method: "PATCH",
-            body: JSON.stringify({
+            url: `${membershipPath}?updateMask=role`,
+            body: {
                 role: rolePath
-            })
+            }
+        },
+        {
+            url: membershipPath,
+            body: {
+                role: rolePath
+            }
+        },
+        {
+            url: `${membershipPath}?updateMask=role`,
+            body: {
+                role: {
+                    path: rolePath
+                }
+            }
+        },
+        {
+            url: membershipPath,
+            body: {
+                role: {
+                    path: rolePath
+                }
+            }
         }
-    );
+    ] as const;
+
+    let lastPatchError: unknown;
+
+    for (const attempt of patchAttempts) {
+        try {
+            await robloxRequest(
+                config,
+                attempt.url,
+                {
+                    method: "PATCH",
+                    body: JSON.stringify(attempt.body)
+                }
+            );
+
+            lastPatchError = null;
+            break;
+        } catch (error) {
+            lastPatchError = error;
+        }
+    }
+
+    if (lastPatchError) {
+        throw lastPatchError;
+    }
 
     console.log(
         `[CommunityWorker] Successfully changed ${row.username} ` +
@@ -519,4 +562,3 @@ export function startCommunityModerationWorker() {
         }
     );
 }
-```
