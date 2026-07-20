@@ -114,6 +114,73 @@ export function startApi(client: Client) {
                 }
 
                 // ==========================================
+                // ROBLOX SERVER EMPTY
+                // ==========================================
+
+                if (event.type === "serverEmpty") {
+
+                    const categoryName =
+                        `${event.serverName} - ${event.serverId}`;
+
+                    const archivedCategoryName =
+                        `(ARCHIVE) ${categoryName}`;
+
+                    const category =
+                        guild.channels.cache.find(
+                            channel =>
+                                channel.type === ChannelType.GuildCategory &&
+                                (
+                                    channel.name === categoryName ||
+                                    channel.name === archivedCategoryName
+                                )
+                        );
+
+                    if (!category) {
+
+                        console.log(
+                            `Could not find category for empty Roblox server: ` +
+                            `${categoryName}`
+                        );
+
+                        return res.json({
+                            success: true,
+                            archived: false,
+                            message: "Category not found"
+                        });
+                    }
+
+                    if (category.name === archivedCategoryName) {
+
+                        console.log(
+                            `Category already archived: ${archivedCategoryName}`
+                        );
+
+                        return res.json({
+                            success: true,
+                            archived: false,
+                            alreadyArchived: true,
+                            categoryId: category.id
+                        });
+                    }
+
+                    await category.setName(
+                        archivedCategoryName,
+                        "Roblox server is empty"
+                    );
+
+                    console.log(
+                        `Archived Roblox server category: ${archivedCategoryName}`
+                    );
+
+                    return res.json({
+                        success: true,
+                        archived: true,
+                        categoryId: category.id,
+                        categoryName: archivedCategoryName
+                    });
+                }
+
+                // ==========================================
                 // PLAYER EVENT VALIDATION
                 //
                 // Supported:
