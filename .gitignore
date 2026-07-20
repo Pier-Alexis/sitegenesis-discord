@@ -3,7 +3,7 @@ node_modules/
 
 # Environment variables (secrets)
 .env
-
+api/.env
 # Logs
 logs/
 *.log
