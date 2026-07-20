@@ -30,6 +30,36 @@ local function sendEvent(data)
 	end
 end
 
+local function isRadioActivated(player)
+
+	local playerGui =
+		player:FindFirstChild("PlayerGui")
+
+	if not playerGui then
+		return false
+	end
+
+	local radioUi =
+		playerGui:FindFirstChild("Radio")
+
+	if not radioUi then
+		return false
+	end
+
+	local activatedValue =
+		radioUi:FindFirstChild("Activated")
+
+	if not activatedValue then
+		return false
+	end
+
+	if activatedValue:IsA("BoolValue") then
+		return activatedValue.Value == true
+	end
+
+	return false
+end
+
 Players.PlayerAdded:Connect(function(player)
 
 	sendEvent({
@@ -73,6 +103,10 @@ Players.PlayerAdded:Connect(function(player)
 		local normalizedMessage = message:gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
 
 		if normalizedMessage == "" then
+			return
+		end
+
+		if isRadioActivated(player) then
 			return
 		end
 

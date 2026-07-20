@@ -2,10 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    buildChannelChatContent,
     buildServerUserChatContent,
     isPlayerLeftEmbedTitle,
     shouldArchiveServerFromLastEmbedTitles
 } from "./logger.js";
+
+test("buildChannelChatContent includes username and id", () => {
+    assert.equal(
+        buildChannelChatContent("Genesis", "42", "hello world"),
+        "Genesis (42): hello world"
+    );
+});
+
+test("buildChannelChatContent prefixes radio channel name when provided", () => {
+    assert.equal(
+        buildChannelChatContent("Genesis", "42", "radio check", "GlobalRadio"),
+        "[GlobalRadio] Genesis (42): radio check"
+    );
+});
 
 test("buildServerUserChatContent returns plain-text format for player chat", () => {
     assert.equal(

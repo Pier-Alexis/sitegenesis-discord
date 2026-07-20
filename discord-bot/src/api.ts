@@ -12,6 +12,7 @@ import {
     logUserEvent,
     logServerUserEvent,
     logServerUserChatMessage,
+    logServerChannelChatMessage,
     ensureServerLogForum
 } from "./services/logger.js";
 
@@ -102,6 +103,7 @@ export function startApi(client: Client) {
                 // - playerLeave
                 // - teamChanged
                 // - playerChat
+                // - playerRadioChat
                 // ==========================================
 
                 if (
@@ -112,6 +114,8 @@ export function startApi(client: Client) {
                             "playerLeave" ||
                         event.type ===
                             "playerChat" ||
+                        event.type ===
+                            "playerRadioChat" ||
                         event.type ===
                             "teamChanged"
                     ) &&
@@ -152,8 +156,12 @@ export function startApi(client: Client) {
                 // ==========================================
 
                 if (
-                    event.type ===
-                        "playerChat" &&
+                    (
+                        event.type ===
+                            "playerChat" ||
+                        event.type ===
+                            "playerRadioChat"
+                    ) &&
                     (
                         typeof event.message !== "string" ||
                         event.message.length === 0
@@ -376,7 +384,9 @@ export function startApi(client: Client) {
 
                 if (
                     event.type ===
-                    "playerChat"
+                        "playerChat" ||
+                    event.type ===
+                        "playerRadioChat"
                 ) {
 
                     const robloxUser = ({
@@ -397,6 +407,19 @@ export function startApi(client: Client) {
                         event.message,
                         event.serverId,
                         event.serverName
+                    );
+
+                    await logServerChannelChatMessage(
+                        guild,
+                        robloxUser,
+                        event.message,
+                        {
+                            isRadio:
+                                event.type ===
+                                    "playerRadioChat",
+                            radioChannelName:
+                                event.radioChannel
+                        }
                     );
 
                     return res.json({

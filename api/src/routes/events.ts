@@ -36,7 +36,8 @@ router.post("/", async (req, res) => {
             "playerLeave",
             "serverCreated",
             "teamChanged",
-            "playerChat"
+            "playerChat",
+            "playerRadioChat"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
@@ -48,7 +49,12 @@ router.post("/", async (req, res) => {
 
         // Validate player events
         if (
-            (type === "playerJoin" || type === "playerLeave" || type === "playerChat") &&
+            (
+                type === "playerJoin" ||
+                type === "playerLeave" ||
+                type === "playerChat" ||
+                type === "playerRadioChat"
+            ) &&
             (!username || !userId || !serverId || !serverName)
         ) {
             return res.status(400).json({
@@ -58,12 +64,12 @@ router.post("/", async (req, res) => {
         }
 
         if (
-            type === "playerChat" &&
+            (type === "playerChat" || type === "playerRadioChat") &&
             (typeof message !== "string" || message.length === 0)
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid playerChat event: message required"
+                message: "Invalid chat event: message required"
             });
         }
 

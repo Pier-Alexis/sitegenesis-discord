@@ -80,6 +80,73 @@ export function buildServerUserChatContent(
     return `💬 ${username}: ${safeMessage.slice(0, truncatedMessageLength)}…`;
 }
 
+export function buildChannelChatContent(
+    username: string,
+    userId: string,
+    message: string,
+    radioChannelName?: string
+) {
+    const normalizedMessage =
+        message
+            .replace(/\r?\n/g, " ")
+            .trim();
+
+    const safeMessage =
+        normalizedMessage.length > 0
+            ? normalizedMessage
+            : "[empty message]";
+
+    const radioPrefix =
+        radioChannelName && radioChannelName.length > 0
+            ? `[${radioChannelName}] `
+            : "";
+
+    const authorPrefix =
+        `${radioPrefix}${username} (${userId}): `;
+
+    const content =
+        `${authorPrefix}${safeMessage}`;
+
+    if (content.length <= DISCORD_MAX_CONTENT_LENGTH) {
+        return content;
+    }
+
+    const truncatedMessageLength =
+        Math.max(
+            0,
+            DISCORD_MAX_CONTENT_LENGTH - authorPrefix.length - 1
+        );
+
+    return `${authorPrefix}${safeMessage.slice(0, truncatedMessageLength)}…`;
+}
+
+async function ensureGuildTextChannel(
+    guild: Guild,
+    channelName: string
+) {
+    await guild.channels.fetch();
+
+    const existingChannel =
+        guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildText &&
+                channel.name === channelName
+        ) as TextChannel | undefined;
+
+    if (existingChannel) {
+        return existingChannel;
+    }
+
+    const createdChannel =
+        await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            reason: `Auto-created channel for ${channelName} logs`
+        });
+
+    return createdChannel as TextChannel;
+}
+
 async function getLastThreadEmbedTitle(
     thread: ThreadChannel
 ) {
@@ -736,6 +803,50 @@ export async function logServerUserChatMessage(
 
         console.error(
             "Failed to log server user chat message:",
+            error
+        );
+    }
+}
+
+export async function logServerChannelChatMessage(
+    guild: Guild,
+    user: User,
+    message: string,
+    options?: {
+        isRadio?: boolean;
+        radioChannelName?: string;
+    }
+) {
+
+    try {
+
+        const isRadio =
+            options?.isRadio ?? false;
+
+        const targetChannelName =
+            isRadio
+                ? config.channels.radioLogs
+                : config.channels.chatLogs;
+
+        const targetChannel =
+            await ensureGuildTextChannel(
+                guild,
+                targetChannelName
+            );
+
+        await targetChannel.send({
+            content: buildChannelChatContent(
+                user.username,
+                user.id,
+                message,
+                options?.radioChannelName
+            )
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log server channel chat message:",
             error
         );
     }
