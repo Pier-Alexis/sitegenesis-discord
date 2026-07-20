@@ -408,148 +408,33 @@ async function executeCommunityAction(
         `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
         `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
 
-    const currentMembership = await robloxRequest<RobloxMembershipResource>(
-        config,
-        membershipPath
-    );
-
-    const currentRole = currentMembership.role;
-    const resolvedCurrentPath =
-        currentMembership.path ??
-        `groups/${config.groupId}/memberships/${membershipId}`;
-
-    const roleAsStringPayload = {
-        ...currentMembership,
-        path: resolvedCurrentPath,
-        role: rolePath
-    };
-
-    const roleAsObjectPayload = {
-        ...currentMembership,
-        path: resolvedCurrentPath,
-        role: {
-            ...(typeof currentRole === "object" && currentRole !== null
-                ? currentRole as Record<string, unknown>
-                : {}),
-            path: rolePath,
-            id: roleId.toString()
-        }
-    };
-
-    const etagHeader =
-        typeof currentMembership.etag === "string" && currentMembership.etag.length > 0
-            ? { "If-Match": currentMembership.etag }
-            : undefined;
-
+    /**
+     * NOTE:
+     *
+     * There is no standalone "Get Group Membership" endpoint in the
+     * Roblox Open Cloud Groups API (only List, Update/PATCH, assignRole,
+     * unassignRole). A GET on membershipPath will always 404 — which is
+     * exactly what was happening (see action 18: 404 on the GET before
+     * the PATCH loop was even reached).
+     *
+     * So we mutate the role directly, no prior fetch needed.
+     */
     const patchAttempts = [
         {
-            label: "membership-as-returned + role string + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: roleAsStringPayload,
-            headers: etagHeader
-        },
-        {
-            label: "membership-as-returned + role object + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: roleAsObjectPayload,
-            headers: etagHeader
-        },
-        {
-            label: "membership-as-returned + role object + role.path updateMask",
-            url: `${membershipPath}?updateMask=role.path`,
-            body: roleAsObjectPayload,
-            headers: etagHeader
-        },
-        {
-            label: "direct role string + updateMask",
-            url: `${membershipPath}?updateMask=role`,
+            label: "assignRole",
+            url: `${membershipPath}:assignRole`,
+            method: "POST",
             body: {
                 role: rolePath
-            },
-            headers: etagHeader
+            }
         },
         {
-            label: "direct role string + body updateMask",
-            url: membershipPath,
-            body: {
-                role: rolePath,
-                updateMask: "role"
-            },
-            headers: etagHeader
-        },
-        {
-            label: "direct role string + update_mask",
-            url: `${membershipPath}?update_mask=role`,
+            label: "PATCH + updateMask=role",
+            url: `${membershipPath}?updateMask=role`,
+            method: "PATCH",
             body: {
                 role: rolePath
-            },
-            headers: etagHeader
-        },
-        {
-            label: "full membership body + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: {
-                path: `groups/${config.groupId}/memberships/${membershipId}`,
-                role: rolePath
-            },
-            headers: etagHeader
-        },
-        {
-            label: "full membership body + body updateMask",
-            url: membershipPath,
-            body: {
-                path: `groups/${config.groupId}/memberships/${membershipId}`,
-                role: rolePath,
-                updateMask: "role"
-            },
-            headers: etagHeader
-        },
-        {
-            label: "groupMembership wrapper + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: {
-                groupMembership: {
-                    role: rolePath
-                }
-            },
-            headers: etagHeader
-        },
-        {
-            label: "direct role object + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: {
-                role: {
-                    path: rolePath
-                }
-            },
-            headers: etagHeader
-        },
-        {
-            label: "role object id + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: {
-                role: {
-                    id: roleId.toString(),
-                    path: rolePath
-                }
-            },
-            headers: etagHeader
-        },
-        {
-            label: "short role path + updateMask",
-            url: `${membershipPath}?updateMask=role`,
-            body: {
-                role: `roles/${roleId}`
-            },
-            headers: etagHeader
-        },
-        {
-            label: "direct role string (no mask)",
-            url: membershipPath,
-            body: {
-                role: rolePath
-            },
-            headers: etagHeader
+            }
         }
     ] as const;
 
@@ -558,7 +443,7 @@ async function executeCommunityAction(
     for (const attempt of patchAttempts) {
         try {
             console.log(
-                `[CommunityWorker] Attempting membership PATCH ` +
+                `[CommunityWorker] Attempting membership role change ` +
                 `(${attempt.label}) for action ${row.id} ` +
                 `url=${attempt.url} body=${JSON.stringify(attempt.body)}`
             );
@@ -567,14 +452,13 @@ async function executeCommunityAction(
                 config,
                 attempt.url,
                 {
-                    method: "PATCH",
-                    headers: attempt.headers,
+                    method: attempt.method,
                     body: JSON.stringify(attempt.body)
                 }
             );
 
             console.log(
-                `[CommunityWorker] Membership PATCH succeeded ` +
+                `[CommunityWorker] Membership role change succeeded ` +
                 `(${attempt.label}) for action ${row.id}`
             );
 
@@ -582,7 +466,7 @@ async function executeCommunityAction(
             break;
         } catch (error) {
             console.error(
-                `[CommunityWorker] Membership PATCH failed ` +
+                `[CommunityWorker] Membership role change failed ` +
                 `(${attempt.label}) for action ${row.id}`,
                 error
             );
