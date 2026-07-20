@@ -64,6 +64,30 @@ Players.PlayerAdded:Connect(function(player)
 		})
 	end)
 
+	player.Chatted:Connect(function(message)
+
+		if type(message) ~= "string" then
+			return
+		end
+
+		local normalizedMessage = message:gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
+
+		if normalizedMessage == "" then
+			return
+		end
+
+		sendEvent({
+			type = "playerChat",
+			username = player.Name,
+			userId = player.UserId,
+			message = normalizedMessage,
+			serverId = serverId,
+			serverName = game.Name,
+			placeId = game.PlaceId
+		})
+
+	end)
+
 end)
 
 

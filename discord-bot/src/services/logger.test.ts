@@ -2,9 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    buildServerUserChatContent,
     isPlayerLeftEmbedTitle,
     shouldArchiveServerFromLastEmbedTitles
 } from "./logger.js";
+
+test("buildServerUserChatContent returns plain-text format for player chat", () => {
+    assert.equal(
+        buildServerUserChatContent("Genesis", "hello everyone"),
+        "💬 Genesis: hello everyone"
+    );
+});
 
 test("isPlayerLeftEmbedTitle accepts both left title variants", () => {
     assert.equal(isPlayerLeftEmbedTitle("📝 Player Left"), true);

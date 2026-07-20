@@ -16,6 +16,8 @@ import { config } from "../config.js";
 const LOG_CHANNEL_NAME =
     config.channels.moderationLogs || "user-logs";
 
+const DISCORD_MAX_CONTENT_LENGTH = 2000;
+
 const PLAYER_LEFT_TITLES = [
     "player left",
     "player leaved"
@@ -46,6 +48,36 @@ export function shouldArchiveServerFromLastEmbedTitles(
         lastEmbedTitles.length > 0 &&
         lastEmbedTitles.every(isPlayerLeftEmbedTitle)
     );
+}
+
+export function buildServerUserChatContent(
+    username: string,
+    message: string
+) {
+    const normalizedMessage =
+        message
+            .replace(/\r?\n/g, " ")
+            .trim();
+
+    const safeMessage =
+        normalizedMessage.length > 0
+            ? normalizedMessage
+            : "[empty message]";
+
+    const content =
+        `💬 ${username}: ${safeMessage}`;
+
+    if (content.length <= DISCORD_MAX_CONTENT_LENGTH) {
+        return content;
+    }
+
+    const truncatedMessageLength =
+        Math.max(
+            0,
+            DISCORD_MAX_CONTENT_LENGTH - (`💬 ${username}: `).length - 1
+        );
+
+    return `💬 ${username}: ${safeMessage.slice(0, truncatedMessageLength)}…`;
 }
 
 async function getLastThreadEmbedTitle(
@@ -656,6 +688,54 @@ export async function logServerUserEvent(
 
         console.error(
             "Failed to log server user event:",
+            error
+        );
+    }
+}
+
+/**
+ * Log a Roblox chat message as plain text (no embed)
+ * inside the player's server thread.
+ */
+export async function logServerUserChatMessage(
+    guild: Guild,
+    user: User,
+    message: string,
+    serverId: string,
+    serverName: string
+) {
+
+    try {
+
+        const forum =
+            await ensureServerLogForum(
+                guild,
+                serverId,
+                serverName
+            );
+
+        const thread =
+            await ensureUserThreadInForum(
+                forum,
+                user
+            );
+
+        await thread.send({
+            content: buildServerUserChatContent(
+                user.username,
+                message
+            )
+        });
+
+        console.log(
+            `Logged chat message for ${user.username} ` +
+            `in server ${serverName} (${serverId})`
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log server user chat message:",
             error
         );
     }

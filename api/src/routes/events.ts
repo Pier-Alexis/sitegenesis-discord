@@ -20,20 +20,23 @@ router.post("/", async (req, res) => {
             username,
             userId,
             serverId,
-            serverName
+            serverName,
+            message
         } = event as {
             type?: string;
             username?: string;
             userId?: number | string;
             serverId?: string;
             serverName?: string;
+            message?: string;
         };
 
         const allowedTypes = new Set([
             "playerJoin",
             "playerLeave",
             "serverCreated",
-            "teamChanged"
+            "teamChanged",
+            "playerChat"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
@@ -45,12 +48,22 @@ router.post("/", async (req, res) => {
 
         // Validate player events
         if (
-            (type === "playerJoin" || type === "playerLeave") &&
+            (type === "playerJoin" || type === "playerLeave" || type === "playerChat") &&
             (!username || !userId || !serverId || !serverName)
         ) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid player event: username, userId, serverId and serverName required"
+            });
+        }
+
+        if (
+            type === "playerChat" &&
+            (typeof message !== "string" || message.length === 0)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid playerChat event: message required"
             });
         }
 

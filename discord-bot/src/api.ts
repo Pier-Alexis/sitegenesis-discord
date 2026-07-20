@@ -11,6 +11,7 @@ import { config } from "./config.js";
 import {
     logUserEvent,
     logServerUserEvent,
+    logServerUserChatMessage,
     ensureServerLogForum
 } from "./services/logger.js";
 
@@ -100,6 +101,7 @@ export function startApi(client: Client) {
                 // - playerJoin
                 // - playerLeave
                 // - teamChanged
+                // - playerChat
                 // ==========================================
 
                 if (
@@ -108,6 +110,8 @@ export function startApi(client: Client) {
                             "playerJoin" ||
                         event.type ===
                             "playerLeave" ||
+                        event.type ===
+                            "playerChat" ||
                         event.type ===
                             "teamChanged"
                     ) &&
@@ -140,6 +144,26 @@ export function startApi(client: Client) {
                         success: false,
                         message:
                             "Invalid teamChanged event payload"
+                    });
+                }
+
+                // ==========================================
+                // CHAT VALIDATION
+                // ==========================================
+
+                if (
+                    event.type ===
+                        "playerChat" &&
+                    (
+                        typeof event.message !== "string" ||
+                        event.message.length === 0
+                    )
+                ) {
+
+                    return res.status(400).json({
+                        success: false,
+                        message:
+                            "Invalid playerChat event payload"
                     });
                 }
 
@@ -340,6 +364,43 @@ export function startApi(client: Client) {
                             category.id,
                         forumId:
                             forum.id
+                    });
+                }
+
+                // ==========================================
+                // PLAYER CHAT
+                //
+                // Chat is logged as plain text in the
+                // server-specific player thread.
+                // ==========================================
+
+                if (
+                    event.type ===
+                    "playerChat"
+                ) {
+
+                    const robloxUser = ({
+                        tag:
+                            event.username,
+
+                        username:
+                            event.username,
+
+                        id:
+                            String(event.userId)
+
+                    } as unknown) as User;
+
+                    await logServerUserChatMessage(
+                        guild,
+                        robloxUser,
+                        event.message,
+                        event.serverId,
+                        event.serverName
+                    );
+
+                    return res.json({
+                        success: true
                     });
                 }
 
