@@ -60,7 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const payload = buildModerationPayload({
         action: "setGroupRank",
-        targetUserId: "0",
+        targetUserId: "",
         targetUsername: robloxUsername,
         reason,
         moderator: interaction.user.tag,
