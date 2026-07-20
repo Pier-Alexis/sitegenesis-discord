@@ -47,6 +47,10 @@ const ROBLOX_OPEN_CLOUD_BASE = "https://apis.roblox.com/cloud/v2";
 
 let workerHandle: NodeJS.Timeout | null = null;
 
+function normalizeEnvValue(value: string | undefined): string {
+    return value?.trim() ?? "";
+}
+
 function parsePositiveInt(
     value: string | undefined,
     fallback: number
@@ -84,8 +88,8 @@ function buildWorkerConfig(): WorkerConfig {
             process.env.COMMUNITY_MODERATION_INTERVAL_MS,
             5000
         ),
-        groupId: process.env.ROBLOX_GROUP_ID ?? "",
-        apiKey: process.env.ROBLOX_OPEN_CLOUD_API_KEY ?? ""
+        groupId: normalizeEnvValue(process.env.ROBLOX_GROUP_ID),
+        apiKey: normalizeEnvValue(process.env.ROBLOX_OPEN_CLOUD_API_KEY)
     };
 }
 
@@ -142,6 +146,8 @@ async function robloxRequest<T>(
     url: string,
     options: RequestInit = {}
 ): Promise<T> {
+    const method = options.method ?? "GET";
+
     const response = await fetch(url, {
         ...options,
         headers: {
@@ -158,8 +164,15 @@ async function robloxRequest<T>(
     const responseText = await response.text().catch(() => "");
 
     if (!response.ok) {
+        if (response.status === 401) {
+            throw new Error(
+                `Open Cloud auth failed (401) for ${method} ${url}. ` +
+                "Check ROBLOX_OPEN_CLOUD_API_KEY value, key expiration, and group permissions/scopes."
+            );
+        }
+
         throw new Error(
-            `Open Cloud call failed (${response.status}): ${responseText}`
+            `Open Cloud call failed (${response.status}) for ${method} ${url}: ${responseText}`
         );
     }
 
