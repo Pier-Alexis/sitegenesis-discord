@@ -1,0 +1,72 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { buildApiHeaders, buildModerationPayload, buildPlayerSearchSummary, formatPlayerListEntry } from "./robloxBridge.js";
+test("buildModerationPayload includes the action, target, and moderator details", () => {
+    const payload = buildModerationPayload({
+        action: "ban",
+        targetUserId: "123",
+        targetUsername: "PlayerOne",
+        reason: "Trolling",
+        moderator: "ModUser"
+    });
+    assert.deepEqual(payload, {
+        action: "ban",
+        userId: "123",
+        username: "PlayerOne",
+        reason: "Trolling",
+        moderator: "ModUser"
+    });
+});
+test("buildModerationPayload includes metadata when provided", () => {
+    const payload = buildModerationPayload({
+        action: "setGroupRank",
+        targetUserId: "123",
+        targetUsername: "PlayerOne",
+        reason: "Promotion",
+        moderator: "ModUser",
+        metadata: {
+            roleId: 200
+        }
+    });
+    assert.deepEqual(payload, {
+        action: "setGroupRank",
+        userId: "123",
+        username: "PlayerOne",
+        reason: "Promotion",
+        moderator: "ModUser",
+        metadata: {
+            roleId: 200
+        }
+    });
+});
+test("formatPlayerListEntry formats a player into the requested display pattern", () => {
+    const entry = formatPlayerListEntry({
+        username: "Genesis",
+        displayName: "System",
+        userId: "42",
+        team: "Alpha"
+    });
+    assert.equal(entry, "Genesis (System) (42) (Alpha)");
+});
+test("buildPlayerSearchSummary includes every requested player detail", () => {
+    const summary = buildPlayerSearchSummary({
+        username: "Genesis",
+        displayName: "System",
+        userId: "42",
+        groups: ["Admin", "Tester"],
+        team: "Alpha"
+    });
+    assert.match(summary, /Username: Genesis/);
+    assert.match(summary, /Display Name: System/);
+    assert.match(summary, /Roblox User ID: 42/);
+    assert.match(summary, /Groups: Admin, Tester/);
+    assert.match(summary, /Current Team: Alpha/);
+});
+test("buildApiHeaders includes the configured API key when present", () => {
+    process.env.API_KEY = "shared-secret";
+    assert.deepEqual(buildApiHeaders(), {
+        "Content-Type": "application/json",
+        "x-api-key": "shared-secret"
+    });
+});
+//# sourceMappingURL=robloxBridge.test.js.map

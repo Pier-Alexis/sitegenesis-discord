@@ -10,20 +10,19 @@ import * as unsetgrouprank from "./unsetgrouprank.js";
 import * as unmute from "./unmute.js";
 import * as warn from "./warn.js";
 import * as setgrouprank from "./setgroupranks.js";
-
 export const commandModules = [
-	ban,
-	kick,
-	unban,
-	mute,
-	unmute,
-	softban,
-	warn,
-	modlogs,
-	caseCommand,
-	playersearch,
-	setgrouprank,
-	unsetgrouprank
-] as const;
-
+    ban,
+    kick,
+    unban,
+    mute,
+    unmute,
+    softban,
+    warn,
+    modlogs,
+    caseCommand,
+    playersearch,
+    setgrouprank,
+    unsetgrouprank
+];
 export const commandData = commandModules.map(command => command.data.toJSON());
+//# sourceMappingURL=registry.js.map

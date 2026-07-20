@@ -1,0 +1,100 @@
+import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { recordModerationEvent } from "../services/moderationLog.js";
+import { buildModerationPayload, forwardModerationToBackend, resolveRobloxRankContext } from "../services/robloxBridge.js";
+export const data = new SlashCommandBuilder()
+    .setName("setgrouprank")
+    .setDescription("Queue a Roblox community/group role change")
+    .addStringOption(option => option
+    .setName("roblox_username")
+    .setDescription("Roblox username to update")
+    .setRequired(true))
+    .addIntegerOption(option => option
+    .setName("role_id")
+    .setDescription("Target Roblox group role ID")
+    .setRequired(true)
+    .setMinValue(1)
+    .setMaxValue(1000000000))
+    .addStringOption(option => option
+    .setName("reason")
+    .setDescription("Reason for the rank change")
+    .setRequired(false))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDMPermission(false);
+export async function execute(interaction) {
+    if (!interaction.inGuild()) {
+        await interaction.reply({
+            content: "⚠️ This command can only be used in a server.",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+    const guild = interaction.guild;
+    if (!guild) {
+        await interaction.reply({
+            content: "⚠️ I could not access this server information.",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+    const robloxUsername = interaction.options.getString("roblox_username", true).trim();
+    const roleId = interaction.options.getInteger("role_id", true);
+    const reason = interaction.options.getString("reason") ?? "No reason provided";
+    const configuredGroupId = process.env.ROBLOX_GROUP_ID?.trim();
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
+        await interaction.reply({
+            content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+    const payload = buildModerationPayload({
+        action: "setGroupRank",
+        targetUserId: "",
+        targetUsername: robloxUsername,
+        reason,
+        moderator: interaction.user.tag,
+        metadata: {
+            roleId
+        }
+    });
+    try {
+        const rankContext = await resolveRobloxRankContext({
+            username: robloxUsername,
+            targetRoleId: roleId,
+            ...(configuredGroupId
+                ? { groupId: configuredGroupId }
+                : {})
+        }).catch(() => ({
+            robloxUserId: null,
+            currentRanks: [],
+            newRankName: null
+        }));
+        await forwardModerationToBackend(payload);
+        const newRankLabel = rankContext.newRankName
+            ? `${rankContext.newRankName} (Role ID ${roleId})`
+            : `Role ID ${roleId}`;
+        await recordModerationEvent(guild, {
+            type: "setgrouprank",
+            guildId: guild.id,
+            guildName: guild.name,
+            targetUserId: rankContext.robloxUserId ?? `roblox:${robloxUsername}`,
+            targetUserTag: `${robloxUsername} (Roblox)`,
+            moderatorId: interaction.user.id,
+            moderatorTag: interaction.user.tag,
+            reason: `Set role to ${newRankLabel}. ${reason}`,
+            currentRanks: rankContext.currentRanks,
+            newRank: newRankLabel
+        });
+        await interaction.reply({
+            content: `✅ Queued role change for ${robloxUsername} to ${newRankLabel}.`
+        });
+    }
+    catch (error) {
+        console.error("Failed to queue rank change", error);
+        await interaction.reply({
+            content: "⚠️ Failed to queue the rank change action.",
+            flags: MessageFlags.Ephemeral
+        });
+    }
+}
+//# sourceMappingURL=setgroupranks.js.map
