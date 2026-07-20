@@ -413,6 +413,8 @@ export function startApi(client: Client) {
                         guild,
                         robloxUser,
                         event.message,
+                        event.serverId,
+                        event.serverName,
                         {
                             isRadio:
                                 event.type ===

@@ -120,14 +120,38 @@ export function buildChannelChatContent(
     return `${authorPrefix}${safeMessage.slice(0, truncatedMessageLength)}…`;
 }
 
-async function ensureGuildTextChannel(
+async function ensureServerTextChannel(
     guild: Guild,
+    serverId: string,
+    serverName: string,
     channelName: string
 ) {
     await guild.channels.fetch();
 
-    const existingChannel =
+    const categoryName =
+        `${serverName} - ${serverId}`;
+
+    const archivedCategoryName =
+        `(ARCHIVE) ${categoryName}`;
+
+    const category =
         guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildCategory &&
+                (
+                    channel.name === categoryName ||
+                    channel.name === archivedCategoryName
+                )
+        ) as CategoryChannel | undefined;
+
+    if (!category) {
+        throw new Error(
+            `Server category not found for text log channel: ${categoryName}`
+        );
+    }
+
+    const existingChannel =
+        category.children.cache.find(
             channel =>
                 channel.type === ChannelType.GuildText &&
                 channel.name === channelName
@@ -141,6 +165,7 @@ async function ensureGuildTextChannel(
         await guild.channels.create({
             name: channelName,
             type: ChannelType.GuildText,
+            parent: category.id,
             reason: `Auto-created channel for ${channelName} logs`
         });
 
@@ -812,6 +837,8 @@ export async function logServerChannelChatMessage(
     guild: Guild,
     user: User,
     message: string,
+    serverId: string,
+    serverName: string,
     options?: {
         isRadio?: boolean;
         radioChannelName?: string;
@@ -829,8 +856,10 @@ export async function logServerChannelChatMessage(
                 : config.channels.chatLogs;
 
         const targetChannel =
-            await ensureGuildTextChannel(
+            await ensureServerTextChannel(
                 guild,
+                serverId,
+                serverName,
                 targetChannelName
             );
 
