@@ -1,12 +1,28 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
-local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.PlaceId)--only for roblox studio, use "serverId = game.JobId," before publishing to roblox
+local MODERATION_NOTIFICATION_EVENT_NAME = "ModerationNotificationEvent"
+local moderationNotificationEvent = ReplicatedStorage:FindFirstChild(MODERATION_NOTIFICATION_EVENT_NAME)
+
+if not moderationNotificationEvent then
+	moderationNotificationEvent = Instance.new("RemoteEvent")
+	moderationNotificationEvent.Name = MODERATION_NOTIFICATION_EVENT_NAME
+	moderationNotificationEvent.Parent = ReplicatedStorage
+end
+
+local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.PlaceId) -- Add 2 dashes to this if you are publishing on roblox
+--local serverId = game.JobId -- Add 2 Dashes to this if you are testing on studio
 local serverName = game.Name
 
-local API_URL = "http://192.168.1.111:3000/api/events"--change to http://sitegenesis.ddns.net:3000/api/events before publishing if not already done
-local MODERATION_PENDING_URL = "http://192.168.1.111:3000/api/roblox/moderation/pending"
-local MODERATION_PROCESSED_BASE_URL = "http://192.168.1.111:3000/api/roblox/moderation/"
+local API_BASE_URL = if RunService:IsStudio()
+	then "http://192.168.1.111:3000/api"
+	else "https://sitegenesis.ddns.net/api"
+
+local API_URL = API_BASE_URL .. "/events"
+local MODERATION_PENDING_URL = API_BASE_URL .. "/roblox/moderation/pending"
+local MODERATION_PROCESSED_BASE_URL = API_BASE_URL .. "/roblox/moderation/"
 
 local API_KEY = "Pk8QJjMLGkWh/fGwHRffkwkQvSvojVZh42rFpwQrsNt7YBo4ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SWxCck9GRkthazFNUjJ0WGFDOW1SM2RJVW1abWEzZHJVWFpUZG05cVZscG9OREp5Um5CM1VYSnpUblEzV1VKdk5DSXNJbTkzYm1WeVNXUWlPaUl4TVRNd05qUXdNRGM1T1NJc0ltVjRjQ0k2TVRjNE5EUTRPRFUxTkN3aWFXRjBJam94TnpnME5EZzBPVFUwTENKdVltWWlPakUzT0RRME9EUTVOVFI5LkhwSFNBMWxQWGdyMWw0ZkRlMEVpWUxGelhXcFUxV1VkVFZhUnFvRWlGczhUR2NYdW9VWkhsb0lzNWxvQjJ5ZFBkRmhyTGY0dzdoZTZWUG9sZzBSaWVPUDNJUnI2cTFQbEdGNmNHNHFyaFNRNzZtYWNHV1R3Mk0zNEUtNkI2SnFmUnBIOFFHR0JYajdXUldIandTWHAyLWlJS29UQ1FkSS1sYVdhZm1LN1ZGU0RpaEJJNnUtN2xZUkFFRURtRlU0RjVvVllRTWlrY2FUZGp0aGZ2MW1ySWRTbWV2b2RRS3gzQVd4LTA1ekl1LVUwQ3BIYmxpeFcwRzdNamNmQ3lhemRpM0pVaUR1TUVXT0txRkhuYVNFY1lnR0VGSElmUFFBNmMtRkxuVDdWSUNtYVJOVWVGdThUVlAzWlRKRVJ6QURJV0czUGtwNzAzOUxadzc5SS1LcXZjQQ=="
 
@@ -246,8 +262,21 @@ local function getPendingModerationActions()
 		})
 	end)
 
-	if not success or not response or not response.Success then
-		warn("Failed to fetch moderation actions:", response)
+	if not success then
+		warn("Failed to fetch moderation actions (request threw):", tostring(response))
+		return {}
+	end
+
+	if not response then
+		warn("Failed to fetch moderation actions: missing response")
+		return {}
+	end
+
+	if not response.Success then
+		warn(
+			("Failed to fetch moderation actions (HTTP %s): %s")
+				:format(tostring(response.StatusCode), tostring(response.Body))
+		)
 		return {}
 	end
 
@@ -256,7 +285,7 @@ local function getPendingModerationActions()
 	end)
 
 	if not decodedSuccess or type(decoded) ~= "table" then
-		warn("Failed to decode moderation actions payload")
+		warn("Failed to decode moderation actions payload:", tostring(response.Body))
 		return {}
 	end
 
@@ -277,8 +306,21 @@ local function markModerationActionProcessed(actionId)
 		})
 	end)
 
-	if not success or not response or not response.Success then
-		warn("Failed to mark moderation action as processed:", actionId)
+	if not success then
+		warn("Failed to mark moderation action as processed (request threw):", actionId, tostring(response))
+		return
+	end
+
+	if not response then
+		warn("Failed to mark moderation action as processed: missing response for", actionId)
+		return
+	end
+
+	if not response.Success then
+		warn(
+			("Failed to mark moderation action as processed (%s, HTTP %s): %s")
+				:format(tostring(actionId), tostring(response.StatusCode), tostring(response.Body))
+		)
 	end
 end
 
@@ -303,6 +345,22 @@ local function getKickReason(action)
 	end
 
 	return reason
+end
+
+local function sendModerationNotification(player, title, text, duration)
+	if not player or not moderationNotificationEvent then
+		return
+	end
+
+	local payload = {
+		title = title,
+		text = text,
+		duration = duration or 8
+	}
+
+	pcall(function()
+		moderationNotificationEvent:FireClient(player, payload)
+	end)
 end
 
 local function applyModerationAction(action)
@@ -341,6 +399,12 @@ local function applyModerationAction(action)
 	if actionType == "mute" then
 		if player then
 			player:SetAttribute("IsMutedFromModeration", true)
+			sendModerationNotification(
+				player,
+				"Moderation",
+				"You have been muted and can no longer chat. Reason: " .. tostring(action.reason or "No reason provided"),
+				10
+			)
 		end
 		return
 	end
@@ -348,6 +412,12 @@ local function applyModerationAction(action)
 	if actionType == "unmute" then
 		if player then
 			player:SetAttribute("IsMutedFromModeration", false)
+			sendModerationNotification(
+				player,
+				"Moderation",
+				"You have been unmuted and can chat again.",
+				8
+			)
 		end
 		return
 	end

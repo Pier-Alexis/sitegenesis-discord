@@ -70,21 +70,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const payload = buildModerationPayload({
-        action: "warn",
+        action: "kick",
         targetUserId: robloxUserId,
         targetUsername: robloxUsername,
-        reason: `${reason} [kick]`,
+        reason,
         moderator: interaction.user.tag
     });
 
     try {
 
-        await forwardModerationToBackend({
-            ...payload,
-            metadata: {
-                moderationMode: "kick"
-            }
-        });
+        await forwardModerationToBackend(payload);
 
         await recordModerationEvent(guild, {
             type: "kick",
