@@ -17,6 +17,9 @@ const LOG_CHANNEL_NAME =
     config.channels.moderationLogs || "user-logs";
 
 const DISCORD_MAX_CONTENT_LENGTH = 2000;
+const PRIORITY_CATEGORY_NAME = "PriorityCategory";
+const ROBLOX_COMMANDS_AUDIT_CHANNEL_NAME = "robloxCommandsLogs";
+const DISCORD_COMMANDS_AUDIT_CHANNEL_NAME = "discordCommandsLogs";
 
 const PLAYER_LEFT_TITLES = [
     "player left",
@@ -34,6 +37,21 @@ function normalizeThreadLabel(value: string) {
     return value
         .replace(/\s*\(Roblox\)\s*$/i, "")
         .trim();
+}
+
+function normalizeTextChannelName(name: string) {
+    return name
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+}
+
+function truncateDiscordContent(content: string) {
+    if (content.length <= DISCORD_MAX_CONTENT_LENGTH) {
+        return content;
+    }
+
+    return content.slice(0, DISCORD_MAX_CONTENT_LENGTH - 1) + "…";
 }
 
 /**
@@ -290,6 +308,84 @@ async function ensureServerTextChannel(
             type: ChannelType.GuildText,
             parent: category.id,
             reason: `Auto-created channel for ${channelName} logs`
+        });
+
+    return createdChannel as TextChannel;
+}
+
+async function ensurePriorityCategory(
+    guild: Guild
+) {
+    await guild.channels.fetch();
+
+    const existingCategory =
+        guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildCategory &&
+                channel.name.toLowerCase() === PRIORITY_CATEGORY_NAME.toLowerCase()
+        ) as CategoryChannel | undefined;
+
+    if (existingCategory) {
+        return existingCategory;
+    }
+
+    const createdCategory =
+        await guild.channels.create({
+            name: PRIORITY_CATEGORY_NAME,
+            type: ChannelType.GuildCategory,
+            reason: "Auto-created category for audit command logs"
+        });
+
+    return createdCategory as CategoryChannel;
+}
+
+async function ensurePriorityAuditChannel(
+    guild: Guild,
+    channelName: string
+) {
+    const category =
+        await ensurePriorityCategory(guild);
+
+    const normalizedChannelName =
+        normalizeTextChannelName(channelName);
+
+    const existingInCategory =
+        category.children.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildText &&
+                channel.name === normalizedChannelName
+        ) as TextChannel | undefined;
+
+    if (existingInCategory) {
+        return existingInCategory;
+    }
+
+    const existingInGuild =
+        guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildText &&
+                channel.name === normalizedChannelName
+        ) as TextChannel | undefined;
+
+    if (existingInGuild) {
+        if (existingInGuild.parentId !== category.id) {
+            await existingInGuild.setParent(
+                category.id,
+                {
+                    reason: `Move ${normalizedChannelName} under ${PRIORITY_CATEGORY_NAME}`
+                }
+            );
+        }
+
+        return existingInGuild;
+    }
+
+    const createdChannel =
+        await guild.channels.create({
+            name: normalizedChannelName,
+            type: ChannelType.GuildText,
+            parent: category.id,
+            reason: `Auto-created audit channel ${normalizedChannelName}`
         });
 
     return createdChannel as TextChannel;
@@ -1053,10 +1149,20 @@ export async function logServerCommandUsage(
             `;${commandName} by ${user.username} (${user.id}) | args: ${argsLabel}`;
 
         await targetChannel.send({
-            content:
-                content.length <= DISCORD_MAX_CONTENT_LENGTH
-                    ? content
-                    : content.slice(0, DISCORD_MAX_CONTENT_LENGTH - 1) + "…"
+            content: truncateDiscordContent(content)
+        });
+
+        const robloxAuditChannel =
+            await ensurePriorityAuditChannel(
+                guild,
+                ROBLOX_COMMANDS_AUDIT_CHANNEL_NAME
+            );
+
+        const auditContent =
+            `ROBLOX | ${serverName} (${serverId}) | ;${commandName} by ${user.username} (${user.id}) | args: ${argsLabel}`;
+
+        await robloxAuditChannel.send({
+            content: truncateDiscordContent(auditContent)
         });
 
     } catch (error) {
@@ -1079,4 +1185,60 @@ export async function ensureServerCommandsLogChannel(
         serverName,
         config.channels.commandsLogs
     );
+}
+
+export async function ensurePriorityAuditLogChannels(
+    guild: Guild
+) {
+    await ensurePriorityAuditChannel(
+        guild,
+        ROBLOX_COMMANDS_AUDIT_CHANNEL_NAME
+    );
+
+    await ensurePriorityAuditChannel(
+        guild,
+        DISCORD_COMMANDS_AUDIT_CHANNEL_NAME
+    );
+}
+
+export async function logDiscordCommandUsage(
+    guild: Guild,
+    user: User,
+    commandName: string,
+    rawArgs: string,
+    sourceChannelName: string
+) {
+
+    try {
+
+        const targetChannel =
+            await ensurePriorityAuditChannel(
+                guild,
+                DISCORD_COMMANDS_AUDIT_CHANNEL_NAME
+            );
+
+        const normalizedArgs =
+            rawArgs
+                .replace(/\r?\n/g, " ")
+                .trim();
+
+        const argsLabel =
+            normalizedArgs.length > 0
+                ? normalizedArgs
+                : "(no args)";
+
+        const content =
+            `DISCORD | #${sourceChannelName} | /${commandName} by ${user.tag} (${user.id}) | args: ${argsLabel}`;
+
+        await targetChannel.send({
+            content: truncateDiscordContent(content)
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Failed to log Discord command usage:",
+            error
+        );
+    }
 }

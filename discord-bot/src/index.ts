@@ -2,7 +2,9 @@ import {
     Client,
     Collection,
     Events,
-    GatewayIntentBits
+    GatewayIntentBits,
+    PermissionFlagsBits,
+    type ChatInputCommandInteraction
 } from "discord.js";
 
 process.on("uncaughtException", error => {
@@ -16,7 +18,12 @@ process.on("unhandledRejection", reason => {
 import { config } from "./config.js";
 
 import { commandModules } from "./commands/registry.js";
-import { logMessageEvent, logUserEvent } from "./services/logger.js";
+import {
+    ensurePriorityAuditLogChannels,
+    logDiscordCommandUsage,
+    logMessageEvent,
+    logUserEvent
+} from "./services/logger.js";
 import { handleCommandError } from "./services/commandErrorHandler.js";
 import { startApi } from "./api.js";
 
@@ -67,6 +74,42 @@ function isAllowedGuild(guildId: string | null | undefined): boolean {
     return guildId === config.guildId;
 }
 
+function formatCommandOptions(
+    interaction: ChatInputCommandInteraction
+) {
+    type SerializableCommandOption = {
+        name: string;
+        value?: unknown;
+        options?: readonly SerializableCommandOption[];
+    };
+
+    const pieces: string[] = [];
+
+    const walk = (
+        options: readonly SerializableCommandOption[],
+        pathPrefix = ""
+    ) => {
+        for (const option of options) {
+            const path = pathPrefix
+                ? `${pathPrefix}.${option.name}`
+                : option.name;
+
+            if (Array.isArray(option.options) && option.options.length > 0) {
+                walk(option.options, path);
+                continue;
+            }
+
+            if (typeof option.value !== "undefined") {
+                pieces.push(`${path}=${String(option.value)}`);
+            }
+        }
+    };
+
+    walk(interaction.options.data as readonly SerializableCommandOption[]);
+
+    return pieces.join(" | ");
+}
+
 
 client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user?.tag}`);
@@ -76,6 +119,17 @@ client.once(Events.ClientReady, () => {
     );
 
     startApi(client);
+
+    if (config.guildId) {
+        client.guilds.fetch(config.guildId)
+            .then(guild => ensurePriorityAuditLogChannels(guild))
+            .catch(error => {
+                console.error(
+                    `Failed to ensure PriorityCategory audit channels for guild ${config.guildId}:`,
+                    error
+                );
+            });
+    }
 
     client.user?.setActivity(
         "Site Genesis Development"
@@ -438,6 +492,28 @@ client.on(
 
         if (!command) {
             return;
+        }
+
+        const isAdminInvoker =
+            interaction.memberPermissions?.has(
+                PermissionFlagsBits.Administrator
+            ) ?? false;
+
+        if (isAdminInvoker) {
+            const sourceChannelName =
+                interaction.channel?.isTextBased() &&
+                "name" in interaction.channel &&
+                typeof interaction.channel.name === "string"
+                    ? interaction.channel.name
+                    : "unknown-channel";
+
+            await logDiscordCommandUsage(
+                interaction.guild,
+                interaction.user,
+                interaction.commandName,
+                formatCommandOptions(interaction),
+                sourceChannelName
+            );
         }
 
         /**
