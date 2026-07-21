@@ -36,42 +36,57 @@ function normalizeThreadLabel(value: string) {
         .trim();
 }
 
-function getUserThreadLabel(user: Pick<User, "tag" | "username" | "id">) {
+/**
+ * Some callers pass a full discord.js User, others pass a
+ * lightweight synthetic object (e.g. for Roblox-only targets
+ * that have no real Discord account). Only `id` is guaranteed.
+ * These helpers must never assume `tag` or `username` exist.
+ */
+type ThreadUserLike = {
+    id: string;
+    tag?: string | null;
+    username?: string | null;
+};
+
+function getUserThreadLabel(user: ThreadUserLike) {
     const usernameLabel = normalizeThreadLabel(user.username?.trim() ?? "");
 
     if (usernameLabel) {
         return usernameLabel;
     }
 
-    const tagLabel = user.tag.includes("#")
-        ? user.tag.split("#")[0]
-        : user.tag;
+    const tag = user.tag ?? "";
+    const tagLabel = tag.includes("#")
+        ? tag.split("#")[0]
+        : tag;
     const normalizedTagLabel = normalizeThreadLabel(tagLabel ?? "");
 
     return normalizedTagLabel || user.id;
 }
 
-function getUserThreadCandidates(user: Pick<User, "tag" | "username" | "id">) {
+function getUserThreadCandidates(user: ThreadUserLike) {
     const canonicalLabel = getUserThreadLabel(user);
-    const tagLabel = user.tag.includes("#")
-        ? user.tag.split("#")[0]
-        : user.tag;
+    const tag = user.tag ?? "";
+    const username = user.username ?? "";
+    const tagLabel = tag.includes("#")
+        ? tag.split("#")[0]
+        : tag;
 
     return [
         `User ${canonicalLabel} (${user.id})`,
         `User ${normalizeThreadLabel(tagLabel ?? "")} (${user.id})`,
-        `User ${user.username} (${user.id})`,
-        `User ${user.tag} (${user.id})`,
+        `User ${username} (${user.id})`,
+        `User ${tag} (${user.id})`,
         `User ${tagLabel} (${user.id})`,
-        `User ${user.username}`,
-        `User ${user.tag}`,
+        `User ${username}`,
+        `User ${tag}`,
         `User ${tagLabel}`
     ].filter((candidate, index, allCandidates) => Boolean(candidate) && allCandidates.indexOf(candidate) === index);
 }
 
 function isMatchingUserThread(
     thread: ThreadChannel,
-    user: Pick<User, "tag" | "username" | "id">
+    user: ThreadUserLike
 ) {
     const name = thread.name?.toLowerCase() ?? "";
 
@@ -90,10 +105,13 @@ function isMatchingUserThread(
     const starterMessage = thread.messages.cache.first();
     const starterText = starterMessage?.content?.toLowerCase() ?? "";
 
+    const tagLower = user.tag?.toLowerCase() ?? "";
+    const usernameLower = user.username?.toLowerCase() ?? "";
+
     return (
         starterText.includes(user.id) ||
-        starterText.includes(user.tag.toLowerCase()) ||
-        starterText.includes(user.username.toLowerCase())
+        (tagLower.length > 0 && starterText.includes(tagLower)) ||
+        (usernameLower.length > 0 && starterText.includes(usernameLower))
     );
 }
 
@@ -532,7 +550,7 @@ export async function ensureServerLogForum(
  * User PARikiBic (1943568858)
  */
 export function buildUserThreadName(
-    user: Pick<User, "tag" | "username" | "id">
+    user: ThreadUserLike
 ): string {
 
     const usernameBase = getUserThreadLabel(user);
@@ -545,7 +563,7 @@ export function buildUserThreadName(
  */
 export async function findUserThread(
     guild: Guild,
-    user: Pick<User, "tag" | "username" | "id">
+    user: ThreadUserLike
 ): Promise<ThreadChannel | null> {
 
     const forums =
@@ -597,7 +615,7 @@ export async function findUserThread(
  */
 export async function ensureUserThread(
     guild: Guild,
-    user: User
+    user: ThreadUserLike
 ): Promise<ThreadChannel> {
 
     const forumChannel =
@@ -639,7 +657,7 @@ export async function ensureUserThread(
         name: threadName,
         message: {
             content:
-                `📌 Activity log for ${user.tag} (${user.id})`
+                `📌 Activity log for ${user.tag ?? user.username ?? user.id} (${user.id})`
         }
     });
 }
