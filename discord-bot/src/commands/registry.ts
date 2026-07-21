@@ -3,6 +3,7 @@ import * as caseCommand from "./case.js";
 import * as kick from "./kick.js";
 import * as modlogs from "./modlogs.js";
 import * as mute from "./mute.js";
+import * as ping from "./ping.js";
 import * as playersearch from "./playersearch.js";
 import * as softban from "./softban.js";
 import * as unban from "./unban.js";
@@ -19,6 +20,7 @@ export const commandModules = [
 	unmute,
 	softban,
 	warn,
+	ping,
 	modlogs,
 	caseCommand,
 	playersearch,
