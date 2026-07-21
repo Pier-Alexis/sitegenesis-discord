@@ -160,7 +160,25 @@ async function cleanupLegacyModerationMessages(thread: ThreadChannel) {
 export async function recordModerationEvent(guild: Guild, event: Omit<ModerationEvent, "id" | "createdAt">) {
     const targetUser = await guild.client.users.fetch(event.targetUserId).catch(() => null);
     const userTag = targetUser?.tag ?? event.targetUserTag;
-    const thread = await ensureUserThread(guild, targetUser ?? ({ tag: userTag, id: event.targetUserId } as any));
+
+    /**
+     * targetUserId may be a Roblox user ID (e.g. from /kick) rather
+     * than a real Discord snowflake, in which case users.fetch()
+     * above will always fail and targetUser will be null.
+     *
+     * ensureUserThread() (and isMatchingUserThread() inside it)
+     * expects an object with id, tag, AND username all present.
+     * Previously this fallback only set tag/id, leaving username
+     * undefined and causing a crash in logger.ts. Build a complete
+     * synthetic user here instead.
+     */
+    const syntheticUser = targetUser ?? {
+        id: event.targetUserId,
+        tag: userTag,
+        username: userTag
+    };
+
+    const thread = await ensureUserThread(guild, syntheticUser as any);
 
     const rankFields = event.type === "setgrouprank"
         ? [

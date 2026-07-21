@@ -21,6 +21,7 @@ export const data = new SlashCommandBuilder()
     .setDMPermission(false);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+
     if (!interaction.inGuild()) {
         await interaction.reply({
             content: "⚠️ This command can only be used in a server.",
@@ -30,6 +31,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const guild = interaction.guild;
+
     if (!guild) {
         await interaction.reply({
             content: "⚠️ I could not access this server information.",
@@ -49,31 +51,35 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
+    /**
+     * Everything past this point involves network calls
+     * (Roblox API lookup, backend forward) that can easily
+     * exceed Discord's 3-second reply window. Defer now so
+     * we have up to 15 minutes to editReply with the result,
+     * instead of risking a dead interaction token later.
+     */
+    await interaction.deferReply();
+
     const robloxUserId = await resolveRobloxUserIdByUsername(robloxUsername);
 
     if (!robloxUserId) {
-        await interaction.reply({
-            content: "⚠️ I could not find that Roblox username.",
-            flags: MessageFlags.Ephemeral
+        await interaction.editReply({
+            content: "⚠️ I could not find that Roblox username."
         });
         return;
     }
 
     const payload = buildModerationPayload({
-        action: "warn",
+        action: "kick",
         targetUserId: robloxUserId,
         targetUsername: robloxUsername,
-        reason: `${reason} [kick]`,
+        reason,
         moderator: interaction.user.tag
     });
 
     try {
-        await forwardModerationToBackend({
-            ...payload,
-            metadata: {
-                moderationMode: "kick"
-            }
-        });
+
+        await forwardModerationToBackend(payload);
 
         await recordModerationEvent(guild, {
             type: "kick",
@@ -86,14 +92,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             reason
         });
 
-        await interaction.reply({
+        await interaction.editReply({
             content: `✅ Queued a kick for ${robloxUsername} for: ${reason}`
         });
+
     } catch (error) {
+
         console.error("Failed to queue Roblox kick", error);
-        await interaction.reply({
-            content: "⚠️ Failed to queue the kick action.",
-            flags: MessageFlags.Ephemeral
+
+        await interaction.editReply({
+            content: "⚠️ Failed to queue the kick action."
         });
     }
 }

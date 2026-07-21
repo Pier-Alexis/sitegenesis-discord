@@ -39,3 +39,6 @@ Thumbs.db
 coverage/
 
 *.lua
+roblox/scripts/SystemGenesis.lua
+roblox/scripts/ServerGenesisCommands.lua
+roblox/scripts/*.lua
