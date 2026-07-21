@@ -16,9 +16,15 @@ local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.P
 --local serverId = game.JobId -- Add 2 Dashes to this if you are testing on studio
 local serverName = game.Name
 
+<<<<<<< HEAD
 local API_BASE_URL = if RunService:IsStudio()
 	then "http://192.168.1.111:3000/api"
 	else "https://sitegenesis.ddns.net/api"
+=======
+local STUDIO_API_BASE_URL = "http://192.168.1.111:3000/api"
+local LIVE_API_BASE_URL = "http://sitegenesis.ddns.net:3000/api"
+local API_BASE_URL = RunService:IsStudio() and STUDIO_API_BASE_URL or LIVE_API_BASE_URL
+>>>>>>> 6d21b853be6ded33ad8e231cc61ba0325ee5056f
 
 local API_URL = API_BASE_URL .. "/events"
 local MODERATION_PENDING_URL = API_BASE_URL .. "/roblox/moderation/pending"
