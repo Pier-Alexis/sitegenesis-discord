@@ -8,7 +8,8 @@ const actionChoices = [
     { name: "Unmute", value: "unmute" },
     { name: "Warnings", value: "warning" },
     { name: "Softbans", value: "softban" },
-    { name: "Set Group Rank", value: "setgrouprank" }
+    { name: "Set Group Rank", value: "setgrouprank" },
+    { name: "Remove Group Rank", value: "unsetgrouprank" }
 ] as const;
 
 export const data = new SlashCommandBuilder()

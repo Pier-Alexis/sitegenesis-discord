@@ -2,7 +2,7 @@ import db from "../database/database.js";
 
 type ModerationActionRow = {
     id: number;
-    action: "setGroupRank";
+    action: "setGroupRank" | "removeGroupRank";
     userId: string;
     username: string;
     reason: string;
@@ -338,6 +338,21 @@ async function executeCommunityAction(
     config: WorkerConfig,
     row: ModerationActionRow
 ) {
+    if (row.action === "removeGroupRank") {
+        await executeRemoveGroupRank(config, row);
+        return;
+    }
+
+    await executeSetGroupRank(config, row);
+}
+
+/**
+ * Assigns a specific role to a member (used by setGroupRank).
+ */
+async function executeSetGroupRank(
+    config: WorkerConfig,
+    row: ModerationActionRow
+) {
     const metadata = parseMetadata(row.metadata);
 
     /**
@@ -485,6 +500,68 @@ async function executeCommunityAction(
     );
 }
 
+/**
+ * Removes a member's role entirely (used by removeGroupRank).
+ *
+ * Unlike setGroupRank, this does NOT assign a replacement role. It calls
+ * the dedicated "Unassign Role Group Membership" Open Cloud endpoint:
+ *
+ * POST /cloud/v2/groups/{groupId}/memberships/{membershipId}:unassignRole
+ *
+ * No roleId is required or read from metadata for this action.
+ */
+async function executeRemoveGroupRank(
+    config: WorkerConfig,
+    row: ModerationActionRow
+) {
+    console.log(
+        `[CommunityWorker] Processing action ${row.id}: ` +
+        `removeGroupRank for user=${row.username} (${row.userId}), ` +
+        `group=${config.groupId}`
+    );
+
+    /**
+     * Step 1:
+     * Find the internal Open Cloud membership ID.
+     */
+    const membershipId = await resolveMembershipId(
+        config,
+        row.userId
+    );
+
+    console.log(
+        `[CommunityWorker] Resolved membershipId=${membershipId} ` +
+        `for Roblox user ${row.userId}`
+    );
+
+    /**
+     * Step 2:
+     * Unassign the member's current role. No replacement role is set.
+     */
+    const membershipPath =
+        `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
+        `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
+
+    console.log(
+        `[CommunityWorker] Attempting unassignRole for action ${row.id} ` +
+        `url=${membershipPath}:unassignRole`
+    );
+
+    await robloxRequest(
+        config,
+        `${membershipPath}:unassignRole`,
+        {
+            method: "POST",
+            body: JSON.stringify({})
+        }
+    );
+
+    console.log(
+        `[CommunityWorker] Successfully removed group role for ${row.username} ` +
+        `(${row.userId}) in group ${config.groupId}`
+    );
+}
+
 function markActionStatus(
     id: number,
     status: "processed" | "failed"
@@ -507,7 +584,7 @@ function loadPendingCommunityActions() {
                 metadata
              FROM moderation_actions
              WHERE status = 'pending'
-               AND action = 'setGroupRank'
+               AND action IN ('setGroupRank', 'removeGroupRank')
              ORDER BY createdAt ASC`
         )
         .all() as ModerationActionRow[];

@@ -2,45 +2,19 @@ import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCo
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { buildModerationPayload, forwardModerationToBackend, resolveRobloxRankContext } from "../services/robloxBridge.js";
 
-function resolveTargetRoleId(interactionRoleId: number | null) {
-    if (interactionRoleId !== null) {
-        return interactionRoleId;
-    }
-
-    const envRoleId = process.env.ROBLOX_DEMOTION_ROLE_ID?.trim();
-    if (!envRoleId) {
-        return null;
-    }
-
-    const parsed = Number(envRoleId);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-        return null;
-    }
-
-    return parsed;
-}
-
 export const data = new SlashCommandBuilder()
     .setName("unsetgrouprank")
-    .setDescription("Queue a Roblox community/group demotion")
+    .setDescription("Remove a user's role in the Roblox community/group (no replacement rank)")
     .addStringOption(option =>
         option
             .setName("roblox_username")
-            .setDescription("Roblox username to demote")
+            .setDescription("Roblox username to remove the group role from")
             .setRequired(true)
-    )
-    .addIntegerOption(option =>
-        option
-            .setName("role_id")
-            .setDescription("Target Roblox group role ID after demotion")
-            .setRequired(false)
-            .setMinValue(1)
-            .setMaxValue(1000000000)
     )
     .addStringOption(option =>
         option
             .setName("reason")
-            .setDescription("Reason for the demotion")
+            .setDescription("Reason for the removal")
             .setRequired(false)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
@@ -65,8 +39,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const robloxUsername = interaction.options.getString("roblox_username", true).trim();
-    const roleId = resolveTargetRoleId(interaction.options.getInteger("role_id"));
     const reason = interaction.options.getString("reason") ?? "No reason provided";
+    const configuredGroupId = process.env.ROBLOX_GROUP_ID?.trim();
 
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
         await interaction.reply({
@@ -76,31 +50,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    if (!roleId) {
-        await interaction.reply({
-            content: "⚠️ Provide role_id or set ROBLOX_DEMOTION_ROLE_ID in environment.",
-            flags: MessageFlags.Ephemeral
-        });
-        return;
-    }
-
-    const configuredGroupId = process.env.ROBLOX_GROUP_ID?.trim();
-
     const payload = buildModerationPayload({
-        action: "setGroupRank",
+        action: "removeGroupRank",
         targetUserId: "",
         targetUsername: robloxUsername,
         reason,
-        moderator: interaction.user.tag,
-        metadata: {
-            roleId
-        }
+        moderator: interaction.user.tag
     });
 
     try {
         const rankContext = await resolveRobloxRankContext({
             username: robloxUsername,
-            targetRoleId: roleId,
             ...(configuredGroupId
                 ? { groupId: configuredGroupId }
                 : {})
@@ -112,30 +72,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         await forwardModerationToBackend(payload);
 
-        const newRankLabel = rankContext.newRankName
-            ? `${rankContext.newRankName} (Role ID ${roleId})`
-            : `Role ID ${roleId}`;
-
         await recordModerationEvent(guild, {
-            type: "setgrouprank",
+            type: "unsetgrouprank",
             guildId: guild.id,
             guildName: guild.name,
             targetUserId: rankContext.robloxUserId ?? `roblox:${robloxUsername}`,
             targetUserTag: `${robloxUsername} (Roblox)`,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
-            reason: `Demoted to ${newRankLabel}. ${reason}`,
+            reason: `Removed group role. ${reason}`,
             currentRanks: rankContext.currentRanks,
-            newRank: newRankLabel
+            newRank: "None (role removed)"
         });
 
         await interaction.reply({
-            content: `✅ Queued demotion for ${robloxUsername} to ${newRankLabel}.`
+            content: `✅ Queued group role removal for ${robloxUsername}.`
         });
     } catch (error) {
-        console.error("Failed to queue demotion", error);
+        console.error("Failed to queue group role removal", error);
         await interaction.reply({
-            content: "⚠️ Failed to queue the demotion action.",
+            content: "⚠️ Failed to queue the group role removal action.",
             flags: MessageFlags.Ephemeral
         });
     }

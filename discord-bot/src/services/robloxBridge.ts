@@ -1,4 +1,4 @@
-export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn" | "setGroupRank" | "kick";
+export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn" | "setGroupRank" | "removeGroupRank" | "kick";
 
 export type RobloxModerationPayload = {
     action: RobloxModerationAction;
@@ -151,7 +151,7 @@ async function fetchGroupRoleName(groupId: string, roleId: number): Promise<stri
 
 export async function resolveRobloxRankContext(input: {
     username: string;
-    targetRoleId: number;
+    targetRoleId?: number;
     groupId?: string;
 }): Promise<RobloxRankContext> {
     const robloxUserId = await fetchRobloxUserIdByUsername(input.username);
@@ -160,7 +160,7 @@ export async function resolveRobloxRankContext(input: {
         return {
             robloxUserId: null,
             currentRanks: [],
-            newRankName: input.groupId
+            newRankName: input.groupId && input.targetRoleId !== undefined
                 ? await fetchGroupRoleName(input.groupId, input.targetRoleId)
                 : null
         };
@@ -175,7 +175,7 @@ export async function resolveRobloxRankContext(input: {
         : memberships
             .map(entry => `${entry.groupName}: ${entry.roleName} (Rank ${entry.roleRank}, Role ID ${entry.roleId})`);
 
-    const newRankName = input.groupId
+    const newRankName = input.groupId && input.targetRoleId !== undefined
         ? await fetchGroupRoleName(input.groupId, input.targetRoleId)
         : null;
 

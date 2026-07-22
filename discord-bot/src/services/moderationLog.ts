@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Guild, type Message, type ThreadChannel } from "discord.js";
 import { ensureUserThread, findUserThread, getModerationLogForums } from "./logger.js";
 
-export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban" | "setgrouprank" | "kick";
+export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban" | "setgrouprank" | "unsetgrouprank" | "kick";
 
 export type ModerationEvent = {
     id: string;
@@ -44,6 +44,7 @@ function getActionLabel(type: ModerationEventType) {
         case "warning": return "Warning";
         case "softban": return "Softban";
         case "setgrouprank": return "Set Group Rank";
+        case "unsetgrouprank": return "Remove Group Rank";
         case "kick": return "Kick";
     }
 }
@@ -57,6 +58,7 @@ function getActionColor(type: ModerationEventType) {
         case "warning": return 0xffcc4d;
         case "softban": return 0xfee75c;
         case "setgrouprank": return 0x64d2ff;
+        case "unsetgrouprank": return 0xff6b6b;
         case "kick": return 0xeb459e;
     }
 }
@@ -71,8 +73,10 @@ function normalizeEventType(value: string): ModerationEventType | null {
     if (normalized === "softban" || normalized === "softbans") return "softban";
     if (normalized === "kick" || normalized === "kicks") return "kick";
     if (normalized === "setgrouprank" || normalized === "set group rank" || normalized === "grouprank") return "setgrouprank";
+    if (normalized === "unsetgrouprank" || normalized === "unset group rank" || normalized === "remove group rank" || normalized === "removegrouprank") return "unsetgrouprank";
     if (normalized.includes("softban")) return "softban";
     if (normalized.includes("kick")) return "kick";
+    if (/unset\s*group\s*rank|remove\s*group\s*rank/.test(normalized)) return "unsetgrouprank";
     if (/group\s*rank/.test(normalized)) return "setgrouprank";
     return null;
 }
