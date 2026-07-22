@@ -2,7 +2,7 @@ import express from "express";
 import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
-import { logUserEvent, logServerUserEvent, logServerUserChatMessage, logServerChannelChatMessage, ensureServerLogForum } from "./services/logger.js";
+import { logUserEvent, logServerUserEvent, logServerUserChatMessage, logServerChannelChatMessage, logServerCommandUsage, ensureServerCommandsLogChannel, ensureServerLogForum } from "./services/logger.js";
 dotenv.config();
 const app = express();
 const recentRadioChatKeys = new Map();
@@ -77,6 +77,7 @@ export function startApi(client) {
             // - teamChanged
             // - playerChat
             // - playerRadioChat
+            // - adminCommandUsed
             // ==========================================
             if ((event.type ===
                 "playerJoin" ||
@@ -86,6 +87,8 @@ export function startApi(client) {
                     "playerChat" ||
                 event.type ===
                     "playerRadioChat" ||
+                event.type ===
+                    "adminCommandUsed" ||
                 event.type ===
                     "teamChanged") &&
                 (!event.username ||
@@ -120,6 +123,15 @@ export function startApi(client) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid playerChat event payload"
+                });
+            }
+            if (event.type ===
+                "adminCommandUsed" &&
+                (typeof event.commandName !== "string" ||
+                    event.commandName.trim().length === 0)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid adminCommandUsed event payload"
                 });
             }
             // ==========================================
@@ -169,6 +181,7 @@ export function startApi(client) {
                     console.log(`Category already exists: ` +
                         `${categoryName}`);
                     await ensureServerLogForum(guild, event.serverId, event.serverName);
+                    await ensureServerCommandsLogChannel(guild, event.serverId, event.serverName);
                     return res.json({
                         success: true,
                         created: false,
@@ -191,6 +204,7 @@ export function startApi(client) {
                     console.log(`Restored archived Roblox server category: ` +
                         `${categoryName}`);
                     await ensureServerLogForum(guild, event.serverId, event.serverName);
+                    await ensureServerCommandsLogChannel(guild, event.serverId, event.serverName);
                     return res.json({
                         success: true,
                         created: false,
@@ -219,6 +233,7 @@ export function startApi(client) {
                 console.log(`Created server user-logs forum ` +
                     `"${forum.name}" ` +
                     `(${forum.id})`);
+                await ensureServerCommandsLogChannel(guild, event.serverId, event.serverName);
                 return res.json({
                     success: true,
                     created: true,
@@ -272,6 +287,20 @@ export function startApi(client) {
                         "playerRadioChat",
                     radioChannelName: event.radioChannel
                 });
+                return res.json({
+                    success: true
+                });
+            }
+            if (event.type ===
+                "adminCommandUsed") {
+                const robloxUser = {
+                    tag: event.username,
+                    username: event.username,
+                    id: String(event.userId)
+                };
+                await logServerCommandUsage(guild, robloxUser, event.commandName, typeof event.commandArgsRaw === "string"
+                    ? event.commandArgsRaw
+                    : "", event.serverId, event.serverName);
                 return res.json({
                     success: true
                 });
