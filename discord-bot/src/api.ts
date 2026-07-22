@@ -82,6 +82,12 @@ function parseRobloxBanReason(rawArgs: string) {
     return reason.length > 0 ? reason : "No reason provided";
 }
 
+function parseRobloxUnbanTargetUserId(rawArgs: string) {
+    const firstToken = tokenizeArgs(rawArgs)[0] ?? "";
+    const numericMatch = firstToken.match(/^\d+$/);
+    return numericMatch ? numericMatch[0] : null;
+}
+
 app.use(express.json());
 
 export function startApi(client: Client) {
@@ -629,10 +635,13 @@ export function startApi(client: Client) {
                     ) {
 
                         const argsTokens = tokenizeArgs(rawArgs);
-                        const targetToken = argsTokens[0] ?? "Unknown";
                         const moderationType = commandName === "ban"
                             ? "ban"
                             : "unban";
+
+                        const targetToken = moderationType === "unban"
+                            ? (parseRobloxUnbanTargetUserId(rawArgs) ?? "Unknown")
+                            : (argsTokens[0] ?? "Unknown");
 
                         const reason = moderationType === "ban"
                             ? parseRobloxBanReason(rawArgs)
