@@ -3,6 +3,7 @@ import { Client, ChannelType } from "discord.js";
 import dotenv from "dotenv";
 import { config } from "./config.js";
 import { logUserEvent, logServerUserEvent, logServerUserChatMessage, logServerChannelChatMessage, logServerCommandUsage, ensureServerCommandsLogChannel, ensureServerLogForum } from "./services/logger.js";
+import { recordModerationEvent } from "./services/moderationLog.js";
 dotenv.config();
 const app = express();
 const recentRadioChatKeys = new Map();
@@ -27,6 +28,25 @@ function cleanupOldRecentRadioEntries(now) {
             recentRadioChatKeys.delete(key);
         }
     }
+}
+function tokenizeArgs(rawArgs) {
+    return rawArgs
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+}
+function parseRobloxBanReason(rawArgs) {
+    const tokens = tokenizeArgs(rawArgs);
+    if (tokens.length <= 1) {
+        return "No reason provided";
+    }
+    const secondToken = tokens[1];
+    const hasDurationToken = /^-?\d+(?:\.\d+)?$/.test(secondToken);
+    const reasonTokens = hasDurationToken
+        ? tokens.slice(2)
+        : tokens.slice(1);
+    const reason = reasonTokens.join(" ").trim();
+    return reason.length > 0 ? reason : "No reason provided";
 }
 app.use(express.json());
 export function startApi(client) {
@@ -293,14 +313,40 @@ export function startApi(client) {
             }
             if (event.type ===
                 "adminCommandUsed") {
+                const rawArgs = typeof event.commandArgsRaw === "string"
+                    ? event.commandArgsRaw
+                    : "";
                 const robloxUser = {
                     tag: event.username,
                     username: event.username,
                     id: String(event.userId)
                 };
-                await logServerCommandUsage(guild, robloxUser, event.commandName, typeof event.commandArgsRaw === "string"
-                    ? event.commandArgsRaw
-                    : "", event.serverId, event.serverName);
+                await logServerCommandUsage(guild, robloxUser, event.commandName, rawArgs, event.serverId, event.serverName);
+                const commandName = String(event.commandName || "")
+                    .trim()
+                    .toLowerCase();
+                if (commandName === "ban" ||
+                    commandName === "unban") {
+                    const argsTokens = tokenizeArgs(rawArgs);
+                    const targetToken = argsTokens[0] ?? "Unknown";
+                    const moderationType = commandName === "ban"
+                        ? "ban"
+                        : "unban";
+                    const reason = moderationType === "ban"
+                        ? parseRobloxBanReason(rawArgs)
+                        : "No reason provided";
+                    await recordModerationEvent(guild, {
+                        type: moderationType,
+                        source: "game",
+                        guildId: guild.id,
+                        guildName: guild.name,
+                        targetUserId: targetToken,
+                        targetUserTag: `${targetToken} (Roblox)`,
+                        moderatorId: String(event.userId),
+                        moderatorTag: `${event.username} (Roblox)`,
+                        reason
+                    });
+                }
                 return res.json({
                     success: true
                 });
