@@ -12,6 +12,7 @@ import * as unsetgrouprank from "./unsetgrouprank.js";
 import * as unmute from "./unmute.js";
 import * as warn from "./warn.js";
 import * as setgrouprank from "./setgroupranks.js";
+import * as gameban from "./gameban.js";
 
 export const commandModules = [
 	ban,
@@ -27,7 +28,8 @@ export const commandModules = [
 	playersearch,
 	purgecategories,
 	setgrouprank,
-	unsetgrouprank
+	unsetgrouprank,
+	gameban
 ] as const;
 
 export const commandData = commandModules.map(command => command.data.toJSON());
