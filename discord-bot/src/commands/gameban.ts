@@ -11,6 +11,14 @@ export const data = new SlashCommandBuilder()
             .setDescription("Roblox username to ban")
             .setRequired(true)
     )
+
+    .addStringOption(option =>
+        option
+            .setName("duration")
+            .setDescription("Duration of the ban (e.g., 1d, 2h, 30m). Leave empty for a permanent ban.")
+            .setRequired(false)
+    )
+
     .addStringOption(option =>
         option
             .setName("reason")
