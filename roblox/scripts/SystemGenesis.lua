@@ -12,30 +12,29 @@ if not moderationNotificationEvent then
 	moderationNotificationEvent.Parent = ReplicatedStorage
 end
 
-local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.PlaceId) -- Add 2 dashes to this if you are publishing on roblox
---local serverId = game.JobId -- Add 2 Dashes to this if you are testing on studio
-local serverName = game.Name
+local function resolveServerId()
+	if type(game.JobId) == "string" and game.JobId ~= "" then
+		return game.JobId
+	end
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+	-- Studio sessions can have an empty JobId; provide a deterministic fallback.
+	return "Studio-" .. tostring(game.PlaceId)
+end
+
+local function resolveServerName()
+	if type(game.Name) == "string" and game.Name ~= "" then
+		return game.Name
+	end
+
+	return "Place-" .. tostring(game.PlaceId)
+end
+
+local serverId = resolveServerId()
+local serverName = resolveServerName()
+
 local STUDIO_API_BASE_URL = "http://192.168.1.111:3000/api"
 local LIVE_API_BASE_URL = "http://sitegenesis.ddns.net:3000/api"
 local API_BASE_URL = RunService:IsStudio() and STUDIO_API_BASE_URL or LIVE_API_BASE_URL
-=======
-local API_BASE_URL = if RunService:IsStudio()
-	then "http://192.168.1.111:3000/api"
-	else "https://sitegenesis.ddns.net/api"
->>>>>>> 753a8b5a7ce2aab71be02e8c7c22ac75a70c7295
-=======
-local API_BASE_URL = if RunService:IsStudio()
-	then "http://192.168.1.111:3000/api"
-	else "https://sitegenesis.ddns.net/api"
-=======
-local STUDIO_API_BASE_URL = "http://192.168.1.111:3000/api"
-local LIVE_API_BASE_URL = "http://sitegenesis.ddns.net:3000/api"
-local API_BASE_URL = RunService:IsStudio() and STUDIO_API_BASE_URL or LIVE_API_BASE_URL
->>>>>>> 6d21b853be6ded33ad8e231cc61ba0325ee5056f
->>>>>>> eb8545d2c959f3bdb0f7c7abb9cf6461fc1d67e8
 
 local API_URL = API_BASE_URL .. "/events"
 local MODERATION_PENDING_URL = API_BASE_URL .. "/roblox/moderation/pending"
@@ -113,7 +112,7 @@ Players.PlayerAdded:Connect(function(player)
 		username = player.Name,
 		userId = player.UserId,
 		serverId = serverId,
-		serverName = game.Name,
+		serverName = serverName,
 		placeId = game.PlaceId
 	})
 
@@ -135,7 +134,7 @@ Players.PlayerAdded:Connect(function(player)
 			userId = player.UserId,
 			team = player.Team.Name,
 			serverId = serverId,
-			serverName = game.Name,
+			serverName = serverName,
 			placeId = game.PlaceId
 		})
 	end)
@@ -172,7 +171,7 @@ Players.PlayerAdded:Connect(function(player)
 				message = normalizedMessage,
 				radioChannel = radioChannelName,
 				serverId = serverId,
-				serverName = game.Name,
+				serverName = serverName,
 				placeId = game.PlaceId
 			})
 
@@ -185,7 +184,7 @@ Players.PlayerAdded:Connect(function(player)
 			userId = player.UserId,
 			message = normalizedMessage,
 			serverId = serverId,
-			serverName = game.Name,
+			serverName = serverName,
 			placeId = game.PlaceId
 		})
 
@@ -217,7 +216,7 @@ local function sendServerCreated()
 	local data = {
 		type = "serverCreated",
 		serverId = serverId,
-		serverName = game.Name,
+		serverName = serverName,
 		placeId = game.PlaceId
 	}
 
@@ -380,55 +379,213 @@ local function sendModerationNotification(player, title, text, duration)
 	end)
 end
 
+local function applyBanAction(action)
+	local targetUserId = tonumber(action.userId)
+
+	if not targetUserId then
+		warn("Cannot ban user: invalid userId:", action.userId)
+		return false
+	end
+
+	-- Duration doit être en secondes.
+	-- -1 = permanent
+	local duration = tonumber(action.duration)
+
+	if not duration then
+		duration = -1
+	end
+
+	-- Sécurité : une durée inférieure à -1 n'est pas valide
+	if duration < -1 then
+		duration = -1
+	end
+
+	local reason = tostring(action.reason or "No reason provided")
+
+	local displayDuration
+
+	if duration == -1 then
+		displayDuration = "Permanent"
+	else
+		local days = duration / 86400
+
+		if days == math.floor(days) then
+			displayDuration = tostring(math.floor(days))
+				.. (days == 1 and " Day" or " Days")
+		else
+			displayDuration = tostring(duration) .. " seconds"
+		end
+	end
+
+	local displayMessage =
+		"\n\nDuration: "
+		.. displayDuration
+		.. "\nReason: "
+		.. reason
+		.. "\n\nIf you believe this was a mistake please send an appeal through our communications server."
+
+	local success, errorMessage = pcall(function()
+		Players:BanAsync({
+			UserIds = { targetUserId },
+
+			-- -1 = permanent
+			-- > 0 = durée en secondes
+			Duration = duration,
+
+			DisplayReason = displayMessage,
+
+			PrivateReason =
+				"Banned by moderation system"
+				.. " | Action ID: "
+				.. tostring(action.id or "Unknown"),
+
+			ExcludeAltAccounts = false,
+
+			-- Le ban s'applique à toute l'expérience/universe
+			ApplyToUniverse = true
+		})
+	end)
+
+	if not success then
+		warn(
+			"Failed to ban user "
+				.. tostring(targetUserId)
+				.. ": "
+				.. tostring(errorMessage)
+		)
+
+		return false
+	end
+
+	print(
+		"Successfully banned user "
+			.. tostring(targetUserId)
+			.. " | Duration: "
+			.. displayDuration
+			.. " | Reason: "
+			.. reason
+	)
+
+	return true
+end
+
+local function applyUnbanAction(action)
+	local targetUserId = tonumber(action.userId)
+
+	if not targetUserId then
+		warn("Cannot unban user: invalid userId:", action.userId)
+		return false
+	end
+
+	local success, errorMessage = pcall(function()
+		Players:UnbanAsync({
+			UserIds = { targetUserId },
+			ApplyToUniverse = true
+		})
+	end)
+
+	if not success then
+		warn(
+			"Failed to unban user "
+				.. tostring(targetUserId)
+				.. ": "
+				.. tostring(errorMessage)
+		)
+
+		return false
+	end
+
+	print(
+		"Successfully unbanned user "
+			.. tostring(targetUserId)
+	)
+
+	return true
+end
+
 local function applyModerationAction(action)
 
 	if type(action) ~= "table" then
-		return
+		return false
 	end
 
 	local actionType = action.action
 	local targetUserId = action.userId
 	local metadata = action.metadata
 	local player = findOnlinePlayerByUserId(targetUserId)
-	local isLegacyKick = type(metadata) == "table" and metadata.moderationMode == "kick"
+
+	local isLegacyKick =
+		type(metadata) == "table"
+		and metadata.moderationMode == "kick"
 
 	if actionType == "ban" then
-		if player then
-			player:Kick("You were banned by the moderation system.")
-		end
-		return
+		return applyBanAction(action)
 	end
 
-	if actionType == "kick" or (actionType == "warn" and isLegacyKick) then
+	if actionType == "unban" then
+		return applyUnbanAction(action)
+	end
+
+	if actionType == "kick"
+		or (actionType == "warn" and isLegacyKick) then
+
 		if player then
-			player:Kick("You were kicked for: " .. getKickReason(action))
+			player:Kick(
+				"You were kicked for: "
+					.. getKickReason(action)
+			)
 		end
-		return
+
+		return true
 	end
 
 	if actionType == "setGroupRank" then
 		local metadata = action.metadata
-		local roleId = metadata and (metadata.roleId or metadata.rank) or "unknown"
-		warn("setGroupRank queued for user", targetUserId, "target role", roleId, ". Execute role update in backend worker.")
-		return
+		local roleId =
+			metadata
+			and (metadata.roleId or metadata.rank)
+			or "unknown"
+
+		warn(
+			"setGroupRank queued for user",
+			targetUserId,
+			"target role",
+			roleId,
+			". Execute role update in backend worker."
+		)
+
+		return false
 	end
 
 	if actionType == "mute" then
 		if player then
-			player:SetAttribute("IsMutedFromModeration", true)
+			player:SetAttribute(
+				"IsMutedFromModeration",
+				true
+			)
+
 			sendModerationNotification(
 				player,
 				"Moderation",
-				"You have been muted and can no longer chat. Reason: " .. tostring(action.reason or "No reason provided"),
+				"You have been muted and can no longer chat. Reason: "
+					.. tostring(
+						action.reason
+						or "No reason provided"
+					),
 				10
 			)
 		end
-		return
+
+		return true
 	end
 
 	if actionType == "unmute" then
 		if player then
-			player:SetAttribute("IsMutedFromModeration", false)
+			player:SetAttribute(
+				"IsMutedFromModeration",
+				false
+			)
+
 			sendModerationNotification(
 				player,
 				"Moderation",
@@ -436,15 +593,12 @@ local function applyModerationAction(action)
 				8
 			)
 		end
-		return
-	end
 
-	if actionType == "unban" or actionType == "warn" then
-		warn("Action received but no in-server handler defined for:", actionType)
-		return
+		return true
 	end
 
 	warn("Unsupported moderation action:", actionType)
+	return false
 end
 -- // Attempt to save an event if it's not sent to the server
 local eventQueue = {}
@@ -488,16 +642,20 @@ task.spawn(function()
 		local actions = getPendingModerationActions()
 
 		for _, action in ipairs(actions) do
-			local ok, err = pcall(function()
-				applyModerationAction(action)
+
+			local ok, result = pcall(function()
+				return applyModerationAction(action)
 			end)
 
 			if not ok then
-				warn("Error while applying moderation action:", err)
-			end
-
-			if action.id then
-				markModerationActionProcessed(action.id)
+				warn(
+					"Error while applying moderation action:",
+					result
+				)
+			else
+				if result == true and action.id then
+					markModerationActionProcessed(action.id)
+				end
 			end
 		end
 

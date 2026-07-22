@@ -66,6 +66,14 @@ function getActionColor(type: ModerationEventType) {
     }
 }
 
+function getEventSourceLabel(source?: ModerationEventSource) {
+    if (source === "game") {
+        return "Roblox";
+    }
+
+    return "Discord";
+}
+
 function normalizeEventType(value: string): ModerationEventType | null {
     const normalized = value.trim().toLowerCase();
     if (normalized === "ban" || normalized === "bans") return "ban";
@@ -200,6 +208,11 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
         ]
         : [];
 
+    const isBanAuditEvent = event.type === "ban" || event.type === "unban";
+    const sourceField = isBanAuditEvent
+        ? [{ name: "Source", value: getEventSourceLabel(event.source) }]
+        : [];
+
     const embed = new EmbedBuilder()
         .setTitle(`🛡️ ${getActionLabel(event.type)}`)
         .setColor(getActionColor(event.type))
@@ -210,6 +223,7 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
             { name: "Moderator", value: event.moderatorTag },
             { name: "Moderator ID", value: event.moderatorId },
             { name: "Reason", value: event.reason },
+            ...sourceField,
             ...rankFields,
             { name: "Guild", value: event.guildName }
         )
@@ -219,9 +233,9 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
 
     const sentMessage = await thread.send({ embeds: [embed] });
 
-    if (event.source === "game" && (event.type === "ban" || event.type === "unban")) {
+    if (isBanAuditEvent) {
         await sendPriorityAuditEmbed(guild, "bans-unban-logs", embed).catch(error => {
-            console.error("Failed to log game moderation event in bans-unban-logs:", error);
+            console.error("Failed to log moderation event in bans-unban-logs:", error);
         });
     }
 
