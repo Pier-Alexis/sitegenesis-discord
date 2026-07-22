@@ -5,6 +5,7 @@ import * as modlogs from "./modlogs.js";
 import * as mute from "./mute.js";
 import * as ping from "./ping.js";
 import * as playersearch from "./playersearch.js";
+import * as purgecategories from "./purgecategories.js";
 import * as softban from "./softban.js";
 import * as unban from "./unban.js";
 import * as unsetgrouprank from "./unsetgrouprank.js";
@@ -24,6 +25,7 @@ export const commandModules = [
 	modlogs,
 	caseCommand,
 	playersearch,
+	purgecategories,
 	setgrouprank,
 	unsetgrouprank
 ] as const;
