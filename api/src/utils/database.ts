@@ -41,4 +41,20 @@ if (!hasMetadataColumn) {
     db.exec("ALTER TABLE moderation_actions ADD COLUMN metadata TEXT");
 }
 
+const hasDurationColumn = moderationActionColumns.some(column => column.name === "duration");
+
+if (!hasDurationColumn) {
+    // Seconds. -1 or NULL = permanent. Read directly as action.duration by the
+    // Lua moderation worker's applyBanAction, so it must stay a top-level column
+    // (not nested in metadata).
+    db.exec("ALTER TABLE moderation_actions ADD COLUMN duration INTEGER");
+}
+
+const bansColumns = db.prepare("PRAGMA table_info(bans)").all() as Array<{ name: string }>;
+const hasBansDurationColumn = bansColumns.some(column => column.name === "duration");
+
+if (!hasBansDurationColumn) {
+    db.exec("ALTER TABLE bans ADD COLUMN duration INTEGER");
+}
+
 export default db;

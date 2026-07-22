@@ -7,6 +7,8 @@ export type RobloxModerationPayload = {
     reason: string;
     moderator: string;
     metadata?: Record<string, unknown>;
+    /** Seconds. -1 or omitted = permanent. Only meaningful for the "ban" action. */
+    duration?: number;
 };
 
 export type RobloxPlayerEntry = {
@@ -186,6 +188,44 @@ export async function resolveRobloxRankContext(input: {
     };
 }
 
+export type RobloxCurrentGroupRole = {
+    robloxUserId: string;
+    roleId: number;
+    roleName: string;
+};
+
+/**
+ * Looks up the exact role a user currently holds in a specific group.
+ * Used as a safety check before destructive actions like removeGroupRank,
+ * so a moderator can confirm they're removing the rank they think they are.
+ */
+export async function resolveCurrentGroupRole(input: {
+    username: string;
+    groupId: string;
+}): Promise<RobloxCurrentGroupRole | null> {
+    const robloxUserId = await fetchRobloxUserIdByUsername(input.username);
+
+    if (!robloxUserId) {
+        return null;
+    }
+
+    const memberships = await fetchRobloxGroupRolesForUser(robloxUserId);
+
+    const membership = memberships.find(
+        entry => String(entry.groupId) === input.groupId
+    );
+
+    if (!membership) {
+        return null;
+    }
+
+    return {
+        robloxUserId,
+        roleId: membership.roleId,
+        roleName: membership.roleName
+    };
+}
+
 export function buildModerationPayload(input: {
     action: RobloxModerationAction;
     targetUserId: string;
@@ -193,6 +233,8 @@ export function buildModerationPayload(input: {
     reason: string;
     moderator: string;
     metadata?: Record<string, unknown>;
+    /** Seconds. -1 or omitted = permanent. Only meaningful for the "ban" action. */
+    duration?: number;
 }): RobloxModerationPayload {
     return {
         action: input.action,
@@ -200,7 +242,8 @@ export function buildModerationPayload(input: {
         username: input.targetUsername,
         reason: input.reason,
         moderator: input.moderator,
-        ...(input.metadata ? { metadata: input.metadata } : {})
+        ...(input.metadata ? { metadata: input.metadata } : {}),
+        ...(input.duration !== undefined ? { duration: input.duration } : {})
     };
 }
 
