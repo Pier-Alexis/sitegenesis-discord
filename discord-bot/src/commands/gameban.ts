@@ -91,6 +91,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         await recordModerationEvent(guild, {
             type: "ban",
+            source: "game",
             guildId: guild.id,
             guildName: guild.name,
             targetUserId: robloxUserId,

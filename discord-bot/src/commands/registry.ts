@@ -34,4 +34,11 @@ export const commandModules = [
 	gameunban
 ] as const;
 
-export const commandData = commandModules.map(command => command.data.toJSON());
+export const commandData = commandModules.flatMap((command, index) => {
+	if (!command.data) {
+		console.warn(`Skipping command module at index ${index} because it does not export data.`);
+		return [];
+	}
+
+	return [command.data.toJSON()];
+});

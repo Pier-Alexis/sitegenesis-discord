@@ -1,7 +1,9 @@
 import { EmbedBuilder, type Guild, type Message, type ThreadChannel } from "discord.js";
-import { ensureUserThread, findUserThread, getModerationLogForums } from "./logger.js";
+import { ensureUserThread, findUserThread, getModerationLogForums, sendPriorityAuditEmbed } from "./logger.js";
 
 export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban" | "setgrouprank" | "unsetgrouprank" | "kick";
+
+export type ModerationEventSource = "discord" | "game";
 
 export type ModerationEvent = {
     id: string;
@@ -17,6 +19,7 @@ export type ModerationEvent = {
     dmSent?: boolean;
     currentRanks?: string[];
     newRank?: string;
+    source?: ModerationEventSource;
 };
 
 function truncateFieldValue(value: string, maxLength = 1024) {
@@ -215,6 +218,12 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
     await cleanupLegacyModerationMessages(thread);
 
     const sentMessage = await thread.send({ embeds: [embed] });
+
+    if (event.source === "game" && (event.type === "ban" || event.type === "unban")) {
+        await sendPriorityAuditEmbed(guild, "bans-unban-logs", embed).catch(error => {
+            console.error("Failed to log game moderation event in bans-unban-logs:", error);
+        });
+    }
 
     return {
         ...event,

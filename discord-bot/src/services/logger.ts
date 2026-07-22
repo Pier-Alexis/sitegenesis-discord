@@ -20,6 +20,7 @@ const DISCORD_MAX_CONTENT_LENGTH = 2000;
 const PRIORITY_CATEGORY_NAME = "PriorityCategory";
 const ROBLOX_COMMANDS_AUDIT_CHANNEL_NAME = "robloxCommandsLogs";
 const DISCORD_COMMANDS_AUDIT_CHANNEL_NAME = "discordCommandsLogs";
+const GAME_COMMANDS_AUDIT_CHANNEL_NAME = "bans-unban-logs";
 
 const PLAYER_LEFT_TITLES = [
     "player left",
@@ -389,6 +390,18 @@ async function ensurePriorityAuditChannel(
         });
 
     return createdChannel as TextChannel;
+}
+
+export async function sendPriorityAuditEmbed(
+    guild: Guild,
+    channelName: string,
+    embed: EmbedBuilder
+) {
+    const channel = await ensurePriorityAuditChannel(guild, channelName);
+
+    await channel.send({
+        embeds: [embed]
+    });
 }
 
 async function getLastThreadEmbedTitle(
@@ -1198,6 +1211,11 @@ export async function ensurePriorityAuditLogChannels(
     await ensurePriorityAuditChannel(
         guild,
         DISCORD_COMMANDS_AUDIT_CHANNEL_NAME
+    );
+
+    await ensurePriorityAuditChannel(
+        guild,
+        GAME_COMMANDS_AUDIT_CHANNEL_NAME
     );
 }
 
