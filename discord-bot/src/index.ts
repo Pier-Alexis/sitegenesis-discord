@@ -1,4 +1,5 @@
 import {
+    AuditLogEvent,
     Client,
     Collection,
     Events,
@@ -27,6 +28,7 @@ import {
 } from "./services/logger.js";
 import { handleCommandError } from "./services/commandErrorHandler.js";
 import { startApi } from "./api.js";
+import { notifyDiscordBanByUser } from "./services/banNotification.js";
 
 const client = new Client({
     intents: [
@@ -194,6 +196,35 @@ client.on(Events.GuildBanAdd, async banEntry => {
     if (banEntry.user.bot) {
         return;
     }
+
+    let reason = "No reason provided";
+
+    try {
+        const auditLogs = await banEntry.guild.fetchAuditLogs({
+            type: AuditLogEvent.MemberBanAdd,
+            limit: 5
+        });
+
+        const matchingEntry = auditLogs.entries.find(
+            entry => entry.target?.id === banEntry.user.id
+        );
+
+        if (matchingEntry?.reason && matchingEntry.reason.trim().length > 0) {
+            reason = matchingEntry.reason;
+        }
+    } catch (error) {
+        console.warn("Failed to resolve ban reason from audit logs", {
+            guildId: banEntry.guild.id,
+            userId: banEntry.user.id,
+            error
+        });
+    }
+
+    await notifyDiscordBanByUser(
+        banEntry.user,
+        banEntry.guild,
+        reason
+    );
 
     await logUserEvent(
         banEntry.guild,
