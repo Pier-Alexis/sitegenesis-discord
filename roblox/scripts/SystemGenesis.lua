@@ -379,6 +379,94 @@ local function sendModerationNotification(player, title, text, duration)
 	end)
 end
 
+local function normalizeServerMessageText(rawText)
+	if type(rawText) ~= "string" then
+		return ""
+	end
+
+	local normalized = rawText:gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
+	return normalized
+end
+
+local function appendSystemGenesisRadioMessage(player, messageText)
+	local playerGui = player:FindFirstChild("PlayerGui")
+
+	if not playerGui then
+		return false
+	end
+
+	local radioUi = playerGui:FindFirstChild("Radio")
+
+	if not radioUi then
+		return false
+	end
+
+	local frame = radioUi:FindFirstChild("Frame")
+
+	if not frame then
+		return false
+	end
+
+	local scrollingFrame = frame:FindFirstChild("ScrollingFrame")
+
+	if not scrollingFrame or not scrollingFrame:FindFirstChild("CloneMe") then
+		return false
+	end
+
+	local clone = scrollingFrame.CloneMe:Clone()
+	clone.Name = "SystemGenesisMessage"
+	clone.Text = '<font color="#4BD5FF">[SystemGenesis]</font> - ' .. messageText
+	clone.Parent = scrollingFrame
+	clone.Visible = true
+	scrollingFrame.CanvasPosition = Vector2.new(0, 99999)
+
+	return true
+end
+
+local function applyServerMessageAction(action)
+	local metadata = action.metadata
+
+	if type(metadata) ~= "table" then
+		warn("Cannot send server message: missing metadata table")
+		return false
+	end
+
+	local targetServerId = metadata.serverId
+
+	if type(targetServerId) ~= "string" or targetServerId == "" then
+		warn("Cannot send server message: metadata.serverId is missing")
+		return false
+	end
+
+	if tostring(targetServerId) ~= tostring(serverId) then
+		return false
+	end
+
+	local messageText = normalizeServerMessageText(action.reason)
+
+	if messageText == "" then
+		warn("Cannot send server message: empty content")
+		return false
+	end
+
+	local delivered = 0
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if appendSystemGenesisRadioMessage(player, messageText) then
+			delivered += 1
+		end
+	end
+
+	print(
+		"Broadcasted [SystemGenesis] message to",
+		delivered,
+		"radio UIs on server",
+		serverId
+	)
+
+	return true
+end
+
 local function applyBanAction(action)
 	local targetUserId = tonumber(action.userId)
 
@@ -595,6 +683,10 @@ local function applyModerationAction(action)
 		end
 
 		return true
+	end
+
+	if actionType == "serverMessage" then
+		return applyServerMessageAction(action)
 	end
 
 	warn("Unsupported moderation action:", actionType)

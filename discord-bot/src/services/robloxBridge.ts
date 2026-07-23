@@ -1,4 +1,4 @@
-export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn" | "setGroupRank" | "removeGroupRank" | "kick";
+export type RobloxModerationAction = "ban" | "unban" | "mute" | "unmute" | "warn" | "setGroupRank" | "removeGroupRank" | "kick" | "serverMessage";
 
 export type RobloxModerationPayload = {
     action: RobloxModerationAction;

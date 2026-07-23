@@ -1,12 +1,17 @@
 local TextChatService = game:GetService("TextChatService")
 local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
-local HttpService = game:GetService("HttpService")
+const HttpService = game:GetService("HttpService")
+const RunService = game:GetService("RunService")
 
 local serverId = game.JobId ~= "" and game.JobId or "Studio-" .. tostring(game.PlaceId)
 local serverName = game.Name
 
-local API_URL = "http://192.168.1.111:3000/api/events"
+local STUDIO_API_BASE_URL = "http://192.168.1.111:3000/api"
+local LIVE_API_BASE_URL = "http://sitegenesis.ddns.net:3000/api"
+local API_BASE_URL = RunService:IsStudio() and STUDIO_API_BASE_URL or LIVE_API_BASE_URL
+
+local API_URL = API_BASE_URL .. "/events"
 local API_KEY = "Pk8QJjMLGkWh/fGwHRffkwkQvSvojVZh42rFpwQrsNt7YBo4ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SWxCck9GRkthazFNUjJ0WGFDOW1SM2RJVW1abWEzZHJVWFpUZG05cVZscG9OREp5Um5CM1VYSnpUblEzV1VKdk5DSXNJbTkzYm1WeVNXUWlPaUl4TVRNd05qUXdNRGM1T1NJc0ltVjRjQ0k2TVRjNE5EUTRPRFUxTkN3aWFXRjBJam94TnpnME5EZzBPVFUwTENKdVltWWlPakUzT0RRME9EUTVOVFI5LkhwSFNBMWxQWGdyMWw0ZkRlMEVpWUxGelhXcFUxV1VkVFZhUnFvRWlGczhUR2NYdW9VWkhsb0lzNWxvQjJ5ZFBkRmhyTGY0dzdoZTZWUG9sZzBSaWVPUDNJUnI2cTFQbEdGNmNHNHFyaFNRNzZtYWNHV1R3Mk0zNEUtNkI2SnFmUnBIOFFHR0JYajdXUldIandTWHAyLWlJS29UQ1FkSS1sYVdhZm1LN1ZGU0RpaEJJNnUtN2xZUkFFRURtRlU0RjVvVllRTWlrY2FUZGp0aGZ2MW1ySWRTbWV2b2RRS3gzQVd4LTA1ekl1LVUwQ3BIYmxpeFcwRzdNamNmQ3lhemRpM0pVaUR1TUVXT0txRkhuYVNFY1lnR0VGSElmUFFBNmMtRkxuVDdWSUNtYVJOVWVGdThUVlAzWlRKRVJ6QURJV0czUGtwNzAzOUxadzc5SS1LcXZjQQ=="
 
 local function sendEvent(data)
@@ -31,18 +36,6 @@ local function sendEvent(data)
 end
 
 local function connectRadioLogging(radioChannel)
-	radioChannel.ShouldDeliverCallback = function(textChatMessage, targetTextSource)
-		local textSource = textChatMessage.TextSource
-		if textSource then
-			local sourcePlayer = Players:GetPlayerByUserId(textSource.UserId)
-			if sourcePlayer and sourcePlayer:GetAttribute("IsMutedFromModeration") == true then
-				return false
-			end
-		end
-
-		return true
-	end
-
 	radioChannel.MessageReceived:Connect(function(message)
 		local textSource = message.TextSource
 
@@ -53,10 +46,6 @@ local function connectRadioLogging(radioChannel)
 		local player = Players:GetPlayerByUserId(textSource.UserId)
 
 		if not player then
-			return
-		end
-
-		if player:GetAttribute("IsMutedFromModeration") == true then
 			return
 		end
 

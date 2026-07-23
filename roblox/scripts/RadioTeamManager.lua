@@ -4,27 +4,24 @@ local Players = game:GetService("Players")
 local TeamChannels = {
 	["ChaosInsurgency"] = {Channel = "Chaos", Enabled = true},
 	["Class-D"] = {Channel = "None", Enabled = false}, 
-	["Undecided"] = {Channel = "None", Enabled = false}, -- ADDED Undecided HERE!
+	["Undecided"] = {Channel = "None", Enabled = false},
 }
 
 local DefaultFoundationChannel = "Global"
 
 local function UpdatePlayerRadio(player)
-	--("📻 DEBUG 1: Starting radio update for " .. player.Name)
 
 	local playerGui = player:WaitForChild("PlayerGui", 5)
 	if not playerGui then 
 		warn("DEBUG FAIL: PlayerGui didn't load in time for " .. player.Name)
 		return 
 	end
-	--("📻 DEBUG 2: Found PlayerGui")
 
 	local radioUI = playerGui:WaitForChild("Radio", 5) 
 	if not radioUI then 
 		warn("DEBUG FAIL: Could not find 'Radio' inside PlayerGui for " .. player.Name .. ". Check spelling!")
 		return 
 	end
-	--("📻 DEBUG 3: Found Radio UI")
 
 	local channelValue = radioUI:WaitForChild("Channel", 5)
 	local activatedValue = radioUI:WaitForChild("Activated", 5)
@@ -33,21 +30,17 @@ local function UpdatePlayerRadio(player)
 		warn("DEBUG FAIL: Missing 'Channel' or 'Activated' Values inside the Radio UI!")
 		return 
 	end
-	--("📻 DEBUG 4: Found Values")
 
 	local currentTeam = player.Team
 	if currentTeam then
-		--("📻 DEBUG 5: " .. player.Name .. " is on team: " .. currentTeam.Name)
 		local config = TeamChannels[currentTeam.Name]
 
 		if config then
 			channelValue.Value = config.Channel
 			radioUI.Enabled = config.Enabled
-			--("📻 DEBUG 6: Set to custom config (" .. config.Channel .. ")")
 		else
 			channelValue.Value = DefaultFoundationChannel
 			radioUI.Enabled = true
-			--("📻 DEBUG 6: Set to default Foundation config (Global)")
 		end
 
 		-- Turn off the radio by default when they switch teams
@@ -75,7 +68,6 @@ local function UpdatePlayerRadio(player)
 		warn("📻 DEBUG 5: " .. player.Name .. " has no team yet!")
 	end
 
-	--("📻 DEBUG 7: Radio update FINISHED successfully for " .. player.Name)
 end
 
 -- Listen for players joining and changing teams

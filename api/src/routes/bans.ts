@@ -78,7 +78,8 @@ router.post("/roblox/moderation", async (req, res) => {
         "warn",
         "setGroupRank",
         "removeGroupRank",
-        "kick"
+        "kick",
+        "serverMessage"
     ]);
 
     if (!allowedActions.has(action)) {
@@ -89,6 +90,15 @@ router.post("/roblox/moderation", async (req, res) => {
     if (metadata !== undefined && (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))) {
         res.status(400).json({ success: false, message: "Invalid metadata payload" });
         return;
+    }
+
+    if (action === "serverMessage") {
+        const targetServerId = (metadata as { serverId?: unknown } | undefined)?.serverId;
+
+        if (typeof targetServerId !== "string" || targetServerId.trim().length === 0) {
+            res.status(400).json({ success: false, message: "serverMessage requires metadata.serverId" });
+            return;
+        }
     }
 
     let resolvedUserId = typeof userId === "string" ? userId.trim() : "";

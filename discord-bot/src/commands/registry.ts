@@ -14,6 +14,7 @@ import * as warn from "./warn.js";
 import * as setgrouprank from "./setgroupranks.js";
 import * as gameban from "./gameban.js";
 import * as gameunban from "./gameunban.js";
+import * as servermsg from "./servermsg.js";
 
 export const commandModules = [
 	ban,
@@ -31,7 +32,8 @@ export const commandModules = [
 	setgrouprank,
 	unsetgrouprank,
 	gameban,
-	gameunban
+	gameunban,
+	servermsg
 ] as const;
 
 export const commandData = commandModules.flatMap((command, index) => {
