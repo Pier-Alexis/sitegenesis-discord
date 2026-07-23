@@ -16,6 +16,7 @@ process.on("unhandledRejection", reason => {
 });
 
 import { config } from "./config.js";
+import { handlePrefixCommand } from "./handlers/prefixCommandHandler.js";
 
 import { commandModules } from "./commands/registry.js";
 import {
@@ -318,6 +319,18 @@ client.on(
     }
 );
 
+/**
+ * PREFIX COMMANDS (?embed, ?text)
+ *
+ * Unlike everything else in this file, these are NOT gated
+ * by isAllowedGuild() — they work in every guild the bot is
+ * a member of, not just config.guildId.
+ */
+client.on(Events.MessageCreate, async message => {
+    await handlePrefixCommand(message).catch(error => {
+        console.error("Error handling prefix command:", error);
+    });
+});
 
 /**
  * VOICE STATE UPDATE
