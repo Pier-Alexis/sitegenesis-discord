@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { buildModerationPayload, forwardModerationToBackend, resolveRobloxUserIdByUsername } from "../services/robloxBridge.js";
+import { notifyRobloxBanByUserId } from "../services/banNotification.js";
 
 export const data = new SlashCommandBuilder()
     .setName("gameban")
@@ -100,6 +101,22 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             moderatorTag: interaction.user.tag,
             reason
         });
+
+        const dmResult = await notifyRobloxBanByUserId({
+            client: interaction.client,
+            guild,
+            robloxUserId,
+            robloxUsername,
+            reason
+        });
+
+        if (!dmResult.delivered) {
+            console.warn("Roblox ban DM was not delivered", {
+                robloxUserId,
+                robloxUsername,
+                reason: dmResult.reason
+            });
+        }
 
         await interaction.editReply({
             content: `✅ Queued a ban for ${robloxUsername} for: ${reason}`

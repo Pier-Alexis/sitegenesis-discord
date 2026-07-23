@@ -18,6 +18,8 @@ import {
     ensureServerLogForum
 } from "./services/logger.js";
 import { recordModerationEvent } from "./services/moderationLog.js";
+import { notifyRobloxBanByUserId } from "./services/banNotification.js";
+import { resolveRobloxUserIdByUsername } from "./services/robloxBridge.js";
 
 import type { User } from "discord.js";
 
@@ -658,6 +660,40 @@ export function startApi(client: Client) {
                             moderatorTag: `${event.username} (Roblox)`,
                             reason
                         });
+
+                        if (moderationType === "ban") {
+                            let robloxUserId: string | null = null;
+                            const rawTarget = targetToken.trim();
+
+                            if (/^\d+$/.test(rawTarget)) {
+                                robloxUserId = rawTarget;
+                            } else if (rawTarget.length > 0 && rawTarget !== "Unknown") {
+                                robloxUserId = await resolveRobloxUserIdByUsername(rawTarget);
+                            }
+
+                            if (robloxUserId) {
+                                const dmResult = await notifyRobloxBanByUserId({
+                                    client,
+                                    guild,
+                                    robloxUserId,
+                                    robloxUsername: rawTarget,
+                                    reason
+                                });
+
+                                if (!dmResult.delivered) {
+                                    console.warn("In-game Roblox ban DM was not delivered", {
+                                        robloxUserId,
+                                        robloxUsername: rawTarget,
+                                        reason: dmResult.reason
+                                    });
+                                }
+                            } else {
+                                console.warn("Could not resolve Roblox user for in-game ban DM", {
+                                    targetToken,
+                                    commandArgsRaw: rawArgs
+                                });
+                            }
+                        }
                     }
 
                     return res.json({

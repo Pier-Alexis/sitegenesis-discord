@@ -15,6 +15,14 @@ export const config = {
     token: process.env.TOKEN ?? "",
     clientId: process.env.CLIENT_ID ?? "",
     guildId: process.env.GUILD_ID,
+    rover: {
+        apiKey: process.env.ROVER_API_KEY,
+        guildId: process.env.ROVER_GUILD_ID,
+        authScheme: process.env.ROVER_AUTH_SCHEME ?? "Bearer",
+        robloxToDiscordUrlTemplate:
+            process.env.ROVER_ROBLOX_TO_DISCORD_URL_TEMPLATE ??
+            "https://registry.rover.link/api/guilds/{guildId}/roblox-to-discord/{robloxUserId}"
+    },
 
     botName: "Site-Genesis",
     version: "0.1.0",
