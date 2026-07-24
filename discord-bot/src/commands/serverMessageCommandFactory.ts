@@ -19,11 +19,18 @@ import {
     forwardModerationToBackend
 } from "../services/robloxBridge.js";
 import { logServerCommandUsage } from "../services/logger.js";
+import {
+    isAuthorizedForServerMsg,
+    type ServerMsgPermission
+} from "../services/serverMsgPermissions.js";
 
 const ARCHIVE_PREFIX = "(ARCHIVE) ";
 const SERVER_NAME_SEPARATOR = " - ";
 const COMPONENT_TIMEOUT_MS = 60_000;
 const MAX_SERVER_OPTIONS = 25;
+
+/** Sentinel metadata.serverId value meaning "broadcast to every Roblox server". */
+export const ALL_SERVERS_SENTINEL = "*";
 
 type ParsedServerCategory = {
     serverName: string;
@@ -35,6 +42,9 @@ type ServerCommandConfig = {
     commandName: string;
     description: string;
     radioUsername: string;
+    permission: ServerMsgPermission;
+    /** If true, skips the server picker and broadcasts to every Roblox server. */
+    broadcastAll?: boolean;
 };
 
 function normalizeMessage(rawMessage: string) {
@@ -181,6 +191,14 @@ export function createServerMessageCommand(config: ServerCommandConfig) {
             return;
         }
 
+        if (!isAuthorizedForServerMsg(interaction, config.permission)) {
+            await interaction.reply({
+                content: "⛔ You don't have permission to use this command.",
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
         const message = normalizeMessage(interaction.options.getString("message", true));
 
         if (message.length === 0) {
@@ -188,6 +206,37 @@ export function createServerMessageCommand(config: ServerCommandConfig) {
                 content: "⚠️ Message cannot be empty.",
                 flags: MessageFlags.Ephemeral
             });
+            return;
+        }
+
+        if (config.broadcastAll) {
+            await interaction.reply({
+                content: `⏳ Queueing [${config.radioUsername}] radio message for every server...`,
+                flags: MessageFlags.Ephemeral
+            });
+
+            try {
+                await queueServerRadioMessage(
+                    interaction,
+                    guild,
+                    config.commandName,
+                    config.radioUsername,
+                    ALL_SERVERS_SENTINEL,
+                    message,
+                    null
+                );
+
+                await interaction.editReply({
+                    content: `✅ Queued [${config.radioUsername}] radio message for every server: ${message}`
+                });
+            } catch (error) {
+                console.error(`Failed to queue ${config.commandName}`, error);
+
+                await interaction.editReply({
+                    content: "⚠️ Failed to queue the server message."
+                });
+            }
+
             return;
         }
 

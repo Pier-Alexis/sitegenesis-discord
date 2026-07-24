@@ -18,6 +18,10 @@ import * as servermsg from "./servermsg.js";
 import * as sitedirectormsg from "./sitedirectormsg.js";
 import * as o5msg from "./o5msg.js";
 import * as adminmsg from "./adminmsg.js";
+import * as everyservermsg from "./everyservermsg.js";
+import * as everysitedirectormsg from "./everysitedirectormsg.js";
+import * as everyo5msg from "./everyo5msg.js";
+import * as everyadminmsg from "./everyadminmsg.js";
 
 export const commandModules = [
 	ban,
@@ -39,7 +43,11 @@ export const commandModules = [
 	servermsg,
 	sitedirectormsg,
 	o5msg,
-	adminmsg
+	adminmsg,
+	everyservermsg,
+	everysitedirectormsg,
+	everyo5msg,
+	everyadminmsg
 ] as const;
 
 export const commandData = commandModules.flatMap((command, index) => {
