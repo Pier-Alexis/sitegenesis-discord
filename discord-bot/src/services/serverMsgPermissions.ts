@@ -17,7 +17,7 @@ export const ADMIN_USER_ID = "914669712431009863";
 /** Users who can use every *msg command regardless of role. */
 export const BYPASS_USER_IDS: ReadonlySet<string> = new Set([
     ADMIN_USER_ID,
-    "983413792174129153"
+    "914669712431009863"
 ]);
 
 export type ServerMsgPermission =
