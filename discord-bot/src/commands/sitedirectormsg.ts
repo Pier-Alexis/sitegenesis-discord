@@ -1,9 +1,9 @@
 import { createServerMessageCommand } from "./serverMessageCommandFactory.js";
 
 const command = createServerMessageCommand({
-    commandName: "servermsg",
-    description: "Send a [SystemGenesis] radio message to a specific Roblox server",
-    radioUsername: "SystemGenesis"
+    commandName: "sitedirectormsg",
+    description: "Send a [SiteDirector] radio message to a specific Roblox server",
+    radioUsername: "SiteDirector"
 });
 
 export const data = command.data;
