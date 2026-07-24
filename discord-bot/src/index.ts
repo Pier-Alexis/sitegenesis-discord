@@ -29,7 +29,6 @@ import {
 import { handleCommandError } from "./services/commandErrorHandler.js";
 import { startApi } from "./api.js";
 import { notifyDiscordBanByUser } from "./services/banNotification.js";
-import { startRoverAutoSync } from "./services/roverAutoSync.js";
 
 const client = new Client({
     intents: [
@@ -138,8 +137,6 @@ client.once(Events.ClientReady, () => {
     client.user?.setActivity(
         "Site Genesis Development"
     );
-
-startRoverAutoSync(client);
 });
 
 
