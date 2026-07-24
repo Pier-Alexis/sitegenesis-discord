@@ -7,7 +7,8 @@ export declare const BYPASS_USER_IDS: ReadonlySet<string>;
 export type ServerMsgPermission =
     | { type: "role"; roleId: string }
     | { type: "userOnly"; userId: string }
-    | { type: "any" };
+    | { type: "any" }
+    | { type: "o5OrAdmin" };
 export declare function isAuthorizedForServerMsg(
     interaction: ChatInputCommandInteraction,
     permission: ServerMsgPermission
@@ -16,3 +17,4 @@ export declare const SITE_DIRECTOR_PERMISSION: ServerMsgPermission;
 export declare const O5_COUNCIL_PERMISSION: ServerMsgPermission;
 export declare const ADMIN_ONLY_PERMISSION: ServerMsgPermission;
 export declare const ANY_SERVER_MSG_PERMISSION: ServerMsgPermission;
+export declare const SYSTEM_GENESIS_PERMISSION: ServerMsgPermission;

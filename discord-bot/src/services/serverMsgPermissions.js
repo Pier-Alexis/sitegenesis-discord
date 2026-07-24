@@ -52,6 +52,9 @@ export async function isAuthorizedForServerMsg(interaction, permission) {
             return (memberHasRole(member, SITE_DIRECTOR_ROLE_ID) ||
                 memberHasRole(member, O5_COUNCIL_ROLE_ID) ||
                 interaction.user.id === ADMIN_USER_ID);
+        case "o5OrAdmin":
+            return (memberHasRole(member, O5_COUNCIL_ROLE_ID) ||
+                interaction.user.id === ADMIN_USER_ID);
     }
 }
 export const SITE_DIRECTOR_PERMISSION = {
@@ -68,4 +71,7 @@ export const ADMIN_ONLY_PERMISSION = {
 };
 export const ANY_SERVER_MSG_PERMISSION = {
     type: "any"
+};
+export const SYSTEM_GENESIS_PERMISSION = {
+    type: "o5OrAdmin"
 };

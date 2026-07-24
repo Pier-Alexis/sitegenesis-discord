@@ -13,9 +13,9 @@ import {
 import { logServerCommandUsage } from "../services/logger.js";
 import {
     ADMIN_ONLY_PERMISSION,
-    ANY_SERVER_MSG_PERMISSION,
     O5_COUNCIL_PERMISSION,
     SITE_DIRECTOR_PERMISSION,
+    SYSTEM_GENESIS_PERMISSION,
     isAuthorizedForServerMsg
 } from "../services/serverMsgPermissions.js";
 const ARCHIVE_PREFIX = "(ARCHIVE) ";
@@ -28,7 +28,7 @@ const ANNOUNCEMENT_TYPES = [
         id: "systemgenesis",
         label: "SystemGenesis",
         radioUsername: "SystemGenesis",
-        permission: ANY_SERVER_MSG_PERMISSION
+        permission: SYSTEM_GENESIS_PERMISSION
     },
     {
         id: "sitedirector",

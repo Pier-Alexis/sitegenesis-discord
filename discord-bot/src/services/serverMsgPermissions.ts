@@ -23,7 +23,8 @@ export const BYPASS_USER_IDS: ReadonlySet<string> = new Set([
 export type ServerMsgPermission =
     | { type: "role"; roleId: string }
     | { type: "userOnly"; userId: string }
-    | { type: "any" };
+    | { type: "any" }
+    | { type: "o5OrAdmin" };
 
 function memberHasRole(member: GuildMember | null, roleId: string): boolean {
     if (!member) {
@@ -98,6 +99,12 @@ export async function isAuthorizedForServerMsg(
                 memberHasRole(member, O5_COUNCIL_ROLE_ID) ||
                 interaction.user.id === ADMIN_USER_ID
             );
+
+        case "o5OrAdmin":
+            return (
+                memberHasRole(member, O5_COUNCIL_ROLE_ID) ||
+                interaction.user.id === ADMIN_USER_ID
+            );
     }
 }
 
@@ -118,4 +125,8 @@ export const ADMIN_ONLY_PERMISSION: ServerMsgPermission = {
 
 export const ANY_SERVER_MSG_PERMISSION: ServerMsgPermission = {
     type: "any"
+};
+
+export const SYSTEM_GENESIS_PERMISSION: ServerMsgPermission = {
+    type: "o5OrAdmin"
 };
