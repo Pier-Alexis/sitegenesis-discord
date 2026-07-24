@@ -33,7 +33,7 @@ function memberHasRole(member: GuildMember | null, roleId: string): boolean {
     return member.roles.cache.has(roleId);
 }
 
-function resolveGuildMember(interaction: ChatInputCommandInteraction): GuildMember | null {
+function resolveInteractionGuildMember(interaction: ChatInputCommandInteraction): GuildMember | null {
     const member = interaction.member;
 
     if (member && "roles" in member && "cache" in (member.roles as object)) {
@@ -43,20 +43,47 @@ function resolveGuildMember(interaction: ChatInputCommandInteraction): GuildMemb
     return null;
 }
 
+async function resolveMainGuildMember(interaction: ChatInputCommandInteraction): Promise<GuildMember | null> {
+    const client = interaction.client;
+    const guild = client.guilds.cache.get(MAIN_GUILD_ID) ?? await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+
+    if (!guild) {
+        return null;
+    }
+
+    const cachedMember = guild.members.cache.get(interaction.user.id);
+
+    if (cachedMember) {
+        return cachedMember;
+    }
+
+    return await guild.members.fetch(interaction.user.id).catch(() => null);
+}
+
+async function resolveGuildMemberForPermission(interaction: ChatInputCommandInteraction): Promise<GuildMember | null> {
+    const mainGuildMember = await resolveMainGuildMember(interaction);
+
+    if (mainGuildMember) {
+        return mainGuildMember;
+    }
+
+    return resolveInteractionGuildMember(interaction);
+}
+
 /**
  * Checks whether the invoking user is allowed to use a *msg command.
  * Bypass users always pass. Everyone else is checked against the
  * command's specific permission requirement.
  */
-export function isAuthorizedForServerMsg(
+export async function isAuthorizedForServerMsg(
     interaction: ChatInputCommandInteraction,
     permission: ServerMsgPermission
-): boolean {
+): Promise<boolean> {
     if (BYPASS_USER_IDS.has(interaction.user.id)) {
         return true;
     }
 
-    const member = resolveGuildMember(interaction);
+    const member = await resolveGuildMemberForPermission(interaction);
 
     switch (permission.type) {
         case "role":

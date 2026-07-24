@@ -11,7 +11,7 @@ export type ServerMsgPermission =
 export declare function isAuthorizedForServerMsg(
     interaction: ChatInputCommandInteraction,
     permission: ServerMsgPermission
-): boolean;
+): Promise<boolean>;
 export declare const SITE_DIRECTOR_PERMISSION: ServerMsgPermission;
 export declare const O5_COUNCIL_PERMISSION: ServerMsgPermission;
 export declare const ADMIN_ONLY_PERMISSION: ServerMsgPermission;

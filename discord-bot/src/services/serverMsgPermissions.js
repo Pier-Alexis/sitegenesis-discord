@@ -12,18 +12,37 @@ function memberHasRole(member, roleId) {
     }
     return member.roles.cache.has(roleId);
 }
-function resolveGuildMember(interaction) {
+function resolveInteractionGuildMember(interaction) {
     const member = interaction.member;
     if (member && "roles" in member && "cache" in member.roles) {
         return member;
     }
     return null;
 }
-export function isAuthorizedForServerMsg(interaction, permission) {
+async function resolveMainGuildMember(interaction) {
+    const client = interaction.client;
+    const guild = client.guilds.cache.get(MAIN_GUILD_ID) ?? await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+    if (!guild) {
+        return null;
+    }
+    const cachedMember = guild.members.cache.get(interaction.user.id);
+    if (cachedMember) {
+        return cachedMember;
+    }
+    return await guild.members.fetch(interaction.user.id).catch(() => null);
+}
+async function resolveGuildMemberForPermission(interaction) {
+    const mainGuildMember = await resolveMainGuildMember(interaction);
+    if (mainGuildMember) {
+        return mainGuildMember;
+    }
+    return resolveInteractionGuildMember(interaction);
+}
+export async function isAuthorizedForServerMsg(interaction, permission) {
     if (BYPASS_USER_IDS.has(interaction.user.id)) {
         return true;
     }
-    const member = resolveGuildMember(interaction);
+    const member = await resolveGuildMemberForPermission(interaction);
     switch (permission.type) {
         case "role":
             return memberHasRole(member, permission.roleId);

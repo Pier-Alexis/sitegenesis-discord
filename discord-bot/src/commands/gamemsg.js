@@ -193,7 +193,13 @@ export async function execute(interaction) {
         });
         return;
     }
-    const allowedTypes = ANNOUNCEMENT_TYPES.filter(type => isAuthorizedForServerMsg(interaction, type.permission));
+    const allowedTypeChecks = await Promise.all(ANNOUNCEMENT_TYPES.map(async (type) => ({
+        type,
+        allowed: await isAuthorizedForServerMsg(interaction, type.permission)
+    })));
+    const allowedTypes = allowedTypeChecks
+        .filter(entry => entry.allowed)
+        .map(entry => entry.type);
     if (allowedTypes.length === 0) {
         await interaction.reply({
             content: "⛔ You don't have permission to use any game message type.",
@@ -273,7 +279,7 @@ export async function execute(interaction) {
         });
         return;
     }
-    if (!isAuthorizedForServerMsg(interaction, selectedType.permission)) {
+    if (!await isAuthorizedForServerMsg(interaction, selectedType.permission)) {
         await interaction.editReply({
             content: "⛔ You don't have permission for that announcement type.",
             components: []

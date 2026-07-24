@@ -191,7 +191,7 @@ export function createServerMessageCommand(config: ServerCommandConfig) {
             return;
         }
 
-        if (!isAuthorizedForServerMsg(interaction, config.permission)) {
+        if (!await isAuthorizedForServerMsg(interaction, config.permission)) {
             await interaction.reply({
                 content: "⛔ You don't have permission to use this command.",
                 flags: MessageFlags.Ephemeral
