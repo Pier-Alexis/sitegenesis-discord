@@ -80,12 +80,30 @@ async function bloxlinkRequest<T>(
 		},
 	});
 
+	const responseText = await response.text();
+
 	let data: T | undefined;
 
 	try {
-		data = await response.json() as T;
+		data = responseText
+			? JSON.parse(responseText) as T
+			: undefined;
 	} catch {
-		// Certain responses may not contain JSON.
+		console.error(
+			`[Bloxlink sync] Failed to parse response from ${url}`
+		);
+	}
+
+	if (!response.ok) {
+		console.error(
+			`[Bloxlink sync] API error`,
+			{
+				url,
+				status: response.status,
+				statusText: response.statusText,
+				body: responseText,
+			}
+		);
 	}
 
 	return {
