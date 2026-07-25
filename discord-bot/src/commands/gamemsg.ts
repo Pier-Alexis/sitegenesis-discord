@@ -14,6 +14,7 @@ import {
     forwardModerationToBackend
 } from "../services/robloxBridge.js";
 import { logServerCommandUsage } from "../services/logger.js";
+import { resolveServerIdFromCategoryName } from "../services/serverCodenames.js";
 import {
     ADMIN_ONLY_PERMISSION,
     O5_COUNCIL_PERMISSION,
@@ -23,8 +24,6 @@ import {
     type ServerMsgPermission
 } from "../services/serverMsgPermissions.js";
 
-const ARCHIVE_PREFIX = "(ARCHIVE) ";
-const SERVER_NAME_SEPARATOR = " - ";
 const COMPONENT_TIMEOUT_MS = 60_000;
 const MAX_SERVER_OPTIONS = 25;
 const ALL_SERVERS_SENTINEL = "*";
@@ -77,29 +76,18 @@ function normalizeMessage(rawMessage: string) {
 }
 
 function parseServerCategoryName(categoryName: string): ParsedServerCategory | null {
-    const isArchived = categoryName.startsWith(ARCHIVE_PREFIX);
+    const resolved = resolveServerIdFromCategoryName(categoryName);
 
-    const baseName = isArchived
-        ? categoryName.slice(ARCHIVE_PREFIX.length)
-        : categoryName;
-
-    const separatorIndex = baseName.lastIndexOf(SERVER_NAME_SEPARATOR);
-
-    if (separatorIndex <= 0) {
-        return null;
-    }
-
-    const serverName = baseName.slice(0, separatorIndex).trim();
-    const serverId = baseName.slice(separatorIndex + SERVER_NAME_SEPARATOR.length).trim();
-
-    if (serverName.length === 0 || serverId.length === 0) {
+    if (!resolved) {
         return null;
     }
 
     return {
-        serverName,
-        serverId,
-        isArchived
+        serverName: categoryName.startsWith("(ARCHIVE) ")
+            ? categoryName.slice("(ARCHIVE) ".length).trim()
+            : categoryName,
+        serverId: resolved.serverId,
+        isArchived: resolved.isArchived
     };
 }
 
@@ -135,7 +123,6 @@ function buildServerOptions(serverDirectory: Map<string, ParsedServerCategory>) 
         .slice(0, MAX_SERVER_OPTIONS - 1)
         .map(server => ({
             label: server.serverName.slice(0, 100),
-            description: server.serverId.slice(0, 100),
             value: server.serverId
         }));
 }

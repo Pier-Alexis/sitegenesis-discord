@@ -20,7 +20,7 @@ import {
 import { recordModerationEvent } from "./services/moderationLog.js";
 import { notifyRobloxBanByUserId } from "./services/banNotification.js";
 import { resolveRobloxUserIdByUsername } from "./services/robloxBridge.js";
-
+import { buildCategoryDisplayName } from "./services/serverCodenames.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -325,10 +325,10 @@ export function startApi(client: Client) {
                 ) {
 
                     const categoryName =
-                        `${event.serverName} - ${event.serverId}`;
+                        buildCategoryDisplayName(event.serverId);
 
                     const archivedCategoryName =
-                        `(ARCHIVE) ${categoryName}`;
+                        buildCategoryDisplayName(event.serverId, true);
 
                     // ------------------------------------------
                     // CHECK NORMAL CATEGORY

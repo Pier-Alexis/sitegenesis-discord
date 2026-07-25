@@ -11,6 +11,7 @@ import {
     type PartialMessage
 } from "discord.js";
 
+import { buildCategoryDisplayName } from "./serverCodenames.js";
 import { config } from "../config.js";
 
 const LOG_CHANNEL_NAME =
@@ -271,10 +272,10 @@ async function ensureServerTextChannel(
     await guild.channels.fetch();
 
     const categoryName =
-        `${serverName} - ${serverId}`;
+        buildCategoryDisplayName(serverId);
 
     const archivedCategoryName =
-        `(ARCHIVE) ${categoryName}`;
+        buildCategoryDisplayName(serverId, true);
 
     const category =
         guild.channels.cache.find(
@@ -453,10 +454,10 @@ async function archiveServerCategoryIfEmpty(
     }
 
     const categoryName =
-        `${serverName} - ${serverId}`;
+        buildCategoryDisplayName(serverId);
 
     const archivedCategoryName =
-        `(ARCHIVE) ${categoryName}`;
+        buildCategoryDisplayName(serverId, true);
 
     const category =
         forum.guild.channels.cache.find(
@@ -603,10 +604,10 @@ export async function ensureServerLogForum(
     await guild.channels.fetch();
 
     const categoryName =
-        `${serverName} - ${serverId}`;
+        buildCategoryDisplayName(serverId);
 
     const archivedCategoryName =
-        `(ARCHIVE) ${categoryName}`;
+        buildCategoryDisplayName(serverId, true);
 
     const category = guild.channels.cache.find(
         channel =>
