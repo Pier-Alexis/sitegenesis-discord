@@ -138,8 +138,6 @@ client.once(Events.ClientReady, () => {
     client.user?.setActivity(
         "Site Genesis Development"
     );
-
-    startBloxlinkAutoSync(client);
 });
 
 
