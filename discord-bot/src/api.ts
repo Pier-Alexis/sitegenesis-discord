@@ -20,7 +20,7 @@ import {
 import { recordModerationEvent } from "./services/moderationLog.js";
 import { notifyRobloxBanByUserId } from "./services/banNotification.js";
 import { resolveRobloxUserIdByUsername } from "./services/robloxBridge.js";
-import { buildCategoryDisplayName } from "./services/serverCodenames.js";
+import { buildCategoryDisplayName, reorderServerCategories } from "./services/serverCodenames.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -400,6 +400,8 @@ export function startApi(client: Client) {
                             `${categoryName}`
                         );
 
+                        await reorderServerCategories(guild);
+
                         await ensureServerLogForum(
                             guild,
                             event.serverId,
@@ -446,6 +448,8 @@ export function startApi(client: Client) {
                         `(${category.id}) for Roblox server ` +
                         `${event.serverId}`
                     );
+
+                    await reorderServerCategories(guild);
 
                     // ------------------------------------------
                     // CREATE SERVER USER-LOGS FORUM

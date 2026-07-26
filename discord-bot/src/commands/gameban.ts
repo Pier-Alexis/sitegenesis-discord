@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCo
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { buildModerationPayload, forwardModerationToBackend, resolveRobloxUserIdByUsername } from "../services/robloxBridge.js";
 import { notifyRobloxBanByUserId } from "../services/banNotification.js";
+import { ensureOutranksTarget } from "../services/groupRankGuard.js";
 
 export const data = new SlashCommandBuilder()
     .setName("gameban")
@@ -77,6 +78,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         });
         return;
     }
+
+      const rankCheck = await ensureOutranksTarget(interaction.user.id, robloxUserId);
+
+        if (!rankCheck.allowed) {                                                          
+            await interaction.editReply({                                                  
+                content: `⛔ ${rankCheck.reason}`                                          
+            });                                                                            
+            return;                                                                        
+        }
 
     const payload = buildModerationPayload({
         action: "ban",

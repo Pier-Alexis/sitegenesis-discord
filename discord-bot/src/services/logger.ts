@@ -11,7 +11,7 @@ import {
     type PartialMessage
 } from "discord.js";
 
-import { buildCategoryDisplayName } from "./serverCodenames.js";
+import { buildCategoryDisplayName, reorderServerCategories } from "./serverCodenames.js";
 import { config } from "../config.js";
 
 const LOG_CHANNEL_NAME =
@@ -478,6 +478,8 @@ async function archiveServerCategoryIfEmpty(
     console.log(
         `Archived Roblox server category: ${archivedCategoryName}`
     );
+
+    await reorderServerCategories(category.guild);
 
     return true;
 }

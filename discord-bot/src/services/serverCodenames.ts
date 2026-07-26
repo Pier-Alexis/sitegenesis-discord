@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ChannelType, type CategoryChannel, type Guild } from "discord.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // discord-bot/src/services/serverCodenames.ts -> discord-bot/data/server-codenames.json
 const DATA_FILE = path.join(__dirname, "..", "..", "data", "server-codenames.json");
 
-const ARCHIVE_PREFIX = "(ARCHIVE) ";
+export const ARCHIVE_PREFIX = "(ARCHIVE) ";
 
 const ADJECTIVES = [
     "Fading", "Silent", "Crimson", "Shadow", "Iron", "Shattered", "Hollow",
@@ -142,4 +143,50 @@ export function resolveServerIdFromCategoryName(
 export function listServerDirectory(): Array<{ serverId: string; codename: string }> {
     const store = loadStore();
     return Object.entries(store).map(([serverId, codename]) => ({ serverId, codename }));
+}
+
+/**
+ * Re-sorts every recognized Roblox-server category so all active ones come
+ * before all archived ones. Categories that aren't Roblox-server categories
+ * (staff categories, PriorityCategory, etc.) are left exactly where they are.
+ */
+export async function reorderServerCategories(guild: Guild): Promise<void> {
+    await guild.channels.fetch();
+
+    const categories = [...guild.channels.cache.values()].filter(
+        (channel): channel is CategoryChannel => channel.type === ChannelType.GuildCategory
+    );
+
+    const serverCategories = categories.filter(
+        category => resolveServerIdFromCategoryName(category.name) !== null
+    );
+
+    if (serverCategories.length === 0) {
+        return;
+    }
+
+    const active = serverCategories
+        .filter(category => !category.name.startsWith(ARCHIVE_PREFIX))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    const archived = serverCategories
+        .filter(category => category.name.startsWith(ARCHIVE_PREFIX))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Anchor the block at the lowest position currently used by a server
+    // category, so categories above the block (e.g. staff categories) don't move.
+    const startPosition = Math.min(...serverCategories.map(category => category.position));
+
+    const ordered = [...active, ...archived];
+
+    const updates = ordered.map((category, index) => ({
+        channel: category,
+        position: startPosition + index
+    }));
+
+    try {
+        await guild.channels.setPositions(updates);
+    } catch (error) {
+        console.error("[serverCodenames] Failed to reorder server categories:", error);
+    }
 }
