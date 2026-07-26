@@ -262,41 +262,6 @@ export function startApi(client: Client) {
                     });
                 }
 
-                if (event.type === "inventoryChange") {
-
-                    const robloxUser = ({
-                        tag: event.username,
-                        username: event.username,
-                        id: String(event.userId)
-                    } as unknown) as User;
-
-                    const eventName = `Item ${event.action}`; // "Item added", "Item equipped", etc.
-
-                    const detailLines = [
-                        `Roblox username: ${event.username}`,
-                        `Roblox ID: ${event.userId}`,
-                        `Item: ${event.item}`,
-                        `Action: ${event.action}`,
-                        event.from ? `From: ${event.from}` : null,
-                        event.to ? `To: ${event.to}` : null,
-                        `Server: ${event.serverName}`,
-                        `Server ID: ${event.serverId}`
-                    ].filter(Boolean).join("\n");
-
-                    await logUserEvent(guild, robloxUser, eventName, detailLines);
-
-                    await logServerUserEvent(
-                        guild,
-                        robloxUser,
-                        eventName,
-                        detailLines,
-                        event.serverId,
-                        event.serverName
-                    );
-
-                    return res.json({ success: true });
-                }
-
                 // ==========================================
                 // RESOLVE AUTHORIZED DISCORD GUILD
                 // ==========================================
@@ -738,6 +703,41 @@ export function startApi(client: Client) {
                     return res.json({
                         success: true
                     });
+                }
+
+                if (event.type === "inventoryChange") {
+
+                    const robloxUser = ({
+                        tag: event.username,
+                        username: event.username,
+                        id: String(event.userId)
+                    } as unknown) as User;
+
+                    const eventName = `Item ${event.action}`; // "Item added", "Item equipped", etc.
+
+                    const detailLines = [
+                        `Roblox username: ${event.username}`,
+                        `Roblox ID: ${event.userId}`,
+                        `Item: ${event.item}`,
+                        `Action: ${event.action}`,
+                        event.from ? `From: ${event.from}` : null,
+                        event.to ? `To: ${event.to}` : null,
+                        `Server: ${event.serverName}`,
+                        `Server ID: ${event.serverId}`
+                    ].filter(Boolean).join("\n");
+
+                    await logUserEvent(guild, robloxUser, eventName, detailLines);
+
+                    await logServerUserEvent(
+                        guild,
+                        robloxUser,
+                        eventName,
+                        detailLines,
+                        event.serverId,
+                        event.serverName
+                    );
+
+                    return res.json({ success: true });
                 }
 
                 // ==========================================
