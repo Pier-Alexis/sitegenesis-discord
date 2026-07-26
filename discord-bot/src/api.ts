@@ -20,7 +20,7 @@ import {
 import { recordModerationEvent } from "./services/moderationLog.js";
 import { notifyRobloxBanByUserId } from "./services/banNotification.js";
 import { resolveRobloxUserIdByUsername } from "./services/robloxBridge.js";
-import { buildCategoryDisplayName, reorderServerCategories } from "./services/serverCodenames.js";
+import { buildCategoryDisplayName, reorderServerCategories, getCodenameForServerId } from "./services/serverCodenames.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -789,6 +789,10 @@ export function startApi(client: Client) {
 
                     metaLines.push(
                         `Server ID: ${event.serverId}`
+                    );
+
+                    metaLines.push(
+                        `Server codename: ${getCodenameForServerId(event.serverId)}`
                     );
                 }
 
