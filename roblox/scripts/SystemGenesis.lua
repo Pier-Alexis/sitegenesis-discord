@@ -32,7 +32,7 @@ end
 local serverId = resolveServerId()
 local serverName = resolveServerName()
 
-local STUDIO_API_BASE_URL = "http://192.168.1.111:3000/api"
+local STUDIO_API_BASE_URL = "http://192.168.1.67:3000/api"
 local LIVE_API_BASE_URL = "http://sitegenesis.ddns.net:3000/api"
 local API_BASE_URL = RunService:IsStudio() and STUDIO_API_BASE_URL or LIVE_API_BASE_URL
 
@@ -42,6 +42,9 @@ local MODERATION_PROCESSED_BASE_URL = API_BASE_URL .. "/roblox/moderation/"
 
 local API_KEY = "Pk8QJjMLGkWh/fGwHRffkwkQvSvojVZh42rFpwQrsNt7YBo4ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SWxCck9GRkthazFNUjJ0WGFDOW1SM2RJVW1abWEzZHJVWFpUZG05cVZscG9OREp5Um5CM1VYSnpUblEzV1VKdk5DSXNJbTkzYm1WeVNXUWlPaUl4TVRNd05qUXdNRGM1T1NJc0ltVjRjQ0k2TVRjNE5EUTRPRFUxTkN3aWFXRjBJam94TnpnME5EZzBPVFUwTENKdVltWWlPakUzT0RRME9EUTVOVFI5LkhwSFNBMWxQWGdyMWw0ZkRlMEVpWUxGelhXcFUxV1VkVFZhUnFvRWlGczhUR2NYdW9VWkhsb0lzNWxvQjJ5ZFBkRmhyTGY0dzdoZTZWUG9sZzBSaWVPUDNJUnI2cTFQbEdGNmNHNHFyaFNRNzZtYWNHV1R3Mk0zNEUtNkI2SnFmUnBIOFFHR0JYajdXUldIandTWHAyLWlJS29UQ1FkSS1sYVdhZm1LN1ZGU0RpaEJJNnUtN2xZUkFFRURtRlU0RjVvVllRTWlrY2FUZGp0aGZ2MW1ySWRTbWV2b2RRS3gzQVd4LTA1ekl1LVUwQ3BIYmxpeFcwRzdNamNmQ3lhemRpM0pVaUR1TUVXT0txRkhuYVNFY1lnR0VGSElmUFFBNmMtRkxuVDdWSUNtYVJOVWVGdThUVlAzWlRKRVJ6QURJV0czUGtwNzAzOUxadzc5SS1LcXZjQQ=="
 
+
+-- // Attempt to save an event if it's not sent to the server
+local eventQueue = {}
 
 local function sendEvent(data)
 
@@ -57,11 +60,539 @@ local function sendEvent(data)
 		})
 	end)
 
-	if success then
+	if success and response.Success then
 		print("Event sent:", response.StatusCode, response.Body)
 	else
-		warn("Failed sending event:", response)
+		warn("Failed sending event: queuing for retry", response)
+		table.insert(eventQueue, data)
 	end
+end
+
+-- ============================================================
+-- INVENTORY MONITOR
+-- ============================================================
+
+local inventoryStates = {}
+
+local INVENTORY_CHANGE_DELAY = 0.25
+
+---------------------------------------------------------------
+-- gain current inventory
+---------------------------------------------------------------
+
+local function getPlayerInventory(player)
+
+	local inventory = {}
+
+	local backpack = player:FindFirstChild("Backpack")
+
+	if backpack then
+
+		for _, item in ipairs(backpack:GetChildren()) do
+
+			if item:IsA("Tool") then
+
+				table.insert(inventory, {
+					name = item.Name,
+					location = "Backpack"
+				})
+
+			end
+
+		end
+
+	end
+
+
+	local character = player.Character
+
+	if character then
+
+		for _, item in ipairs(character:GetChildren()) do
+
+			if item:IsA("Tool") then
+
+				table.insert(inventory, {
+					name = item.Name,
+					location = "Character"
+				})
+
+			end
+
+		end
+
+	end
+
+
+	return inventory
+
+end
+
+
+---------------------------------------------------------------
+-- find a tool in inventory
+---------------------------------------------------------------
+
+local function findTool(inventory, toolName)
+
+	for _, item in ipairs(inventory) do
+
+		if item.name == toolName then
+			return item
+		end
+
+	end
+
+	return nil
+
+end
+
+
+---------------------------------------------------------------
+-- detects changes
+---------------------------------------------------------------
+
+local function detectInventoryChanges(
+	oldInventory,
+	newInventory
+)
+
+	local changes = {}
+
+	-----------------------------------------------------------
+	-- items added or moved
+	-----------------------------------------------------------
+
+	for _, newItem in ipairs(newInventory) do
+
+		local oldItem =
+			findTool(
+				oldInventory,
+				newItem.name
+			)
+
+		-------------------------------------------------------
+		-- new items
+		-------------------------------------------------------
+
+		if not oldItem then
+
+			table.insert(changes, {
+
+				action = "added",
+
+				item = newItem.name,
+
+				from = nil,
+
+				to = newItem.location
+
+			})
+
+			-------------------------------------------------------
+			-- moved items
+			-------------------------------------------------------
+
+		elseif oldItem.location
+			~= newItem.location then
+
+			if newItem.location == "Character" then
+
+				table.insert(changes, {
+
+					action = "equipped",
+
+					item = newItem.name,
+
+					from = oldItem.location,
+
+					to = newItem.location
+
+				})
+
+			elseif newItem.location == "Backpack" then
+
+				table.insert(changes, {
+
+					action = "unequipped",
+
+					item = newItem.name,
+
+					from = oldItem.location,
+
+					to = newItem.location
+
+				})
+
+			end
+
+		end
+
+	end
+
+
+	-----------------------------------------------------------
+	-- deleted items
+	-----------------------------------------------------------
+
+	for _, oldItem in ipairs(oldInventory) do
+
+		local newItem =
+			findTool(
+				newInventory,
+				oldItem.name
+			)
+
+		if not newItem then
+
+			table.insert(changes, {
+
+				action = "removed",
+
+				item = oldItem.name,
+
+				from = oldItem.location,
+
+				to = nil
+
+			})
+
+		end
+
+	end
+
+
+	return changes
+
+end
+
+
+---------------------------------------------------------------
+-- send event
+---------------------------------------------------------------
+
+local function sendInventoryChangeEvent(
+	player,
+	change,
+	oldInventory,
+	newInventory
+)
+
+	print(
+		"[SiteGenesis] Sending inventory event:",
+		player.Name,
+		change.action,
+		change.item
+	)
+
+
+	sendEvent({
+
+		type = "inventoryChange",
+
+		username = player.Name,
+
+		displayName = player.DisplayName,
+
+		userId = player.UserId,
+
+		action = change.action,
+
+		item = change.item,
+
+		from = change.from,
+
+		to = change.to,
+
+		oldInventory = oldInventory,
+
+		newInventory = newInventory,
+
+		serverId = serverId,
+
+		serverName = serverName,
+
+		placeId = game.PlaceId
+
+	})
+
+end
+
+
+---------------------------------------------------------------
+-- verify inventory
+---------------------------------------------------------------
+
+local function checkInventory(player)
+
+	local state =
+		inventoryStates[player]
+
+	if not state then
+		return
+	end
+
+
+	local newInventory =
+		getPlayerInventory(player)
+
+	local oldInventory =
+		state.inventory
+
+
+	local changes =
+		detectInventoryChanges(
+			oldInventory,
+			newInventory
+		)
+
+
+	-----------------------------------------------------------
+	-- always update
+	-----------------------------------------------------------
+
+	state.inventory =
+		newInventory
+
+
+	-----------------------------------------------------------
+	-- no changes
+	-----------------------------------------------------------
+
+	if #changes == 0 then
+		return
+	end
+
+
+	-----------------------------------------------------------
+	-- send changes
+	-----------------------------------------------------------
+
+	for _, change in ipairs(changes) do
+
+		print(
+			"[SiteGenesis] INVENTORY CHANGE",
+			player.Name,
+			"| Action:",
+			change.action,
+			"| Item:",
+			change.item,
+			"| From:",
+			tostring(change.from),
+			"| To:",
+			tostring(change.to)
+		)
+
+
+		sendInventoryChangeEvent(
+			player,
+			change,
+			oldInventory,
+			newInventory
+		)
+
+	end
+
+end
+
+
+---------------------------------------------------------------
+-- schedule
+---------------------------------------------------------------
+
+local function scheduleInventoryCheck(player)
+
+	if not inventoryStates[player] then
+		return
+	end
+
+
+	task.delay(
+		INVENTORY_CHANGE_DELAY,
+		function()
+
+			if not inventoryStates[player] then
+				return
+			end
+
+
+			checkInventory(player)
+
+		end
+	)
+
+end
+
+
+---------------------------------------------------------------
+-- monitor backpack and/or character
+---------------------------------------------------------------
+
+local function monitorInventoryContainer(
+	player,
+	container
+)
+
+	if not container then
+		return
+	end
+
+
+	print(
+		"[SiteGenesis] Monitoring inventory container:",
+		player.Name,
+		container:GetFullName()
+	)
+
+
+	container.ChildAdded:Connect(
+
+		function(child)
+
+			if not child:IsA("Tool") then
+				return
+			end
+
+
+			print(
+				"[SiteGenesis] Tool ChildAdded:",
+				player.Name,
+				child.Name,
+				"Container:",
+				container.Name
+			)
+
+
+			scheduleInventoryCheck(player)
+
+		end
+
+	)
+
+
+	container.ChildRemoved:Connect(
+
+		function(child)
+
+			if not child:IsA("Tool") then
+				return
+			end
+
+
+			print(
+				"[SiteGenesis] Tool ChildRemoved:",
+				player.Name,
+				child.Name,
+				"Container:",
+				container.Name
+			)
+
+
+			scheduleInventoryCheck(player)
+
+		end
+
+	)
+
+end
+
+
+---------------------------------------------------------------
+-- init monitoring
+---------------------------------------------------------------
+
+local function setupInventoryMonitoring(player)
+
+	print(
+		"[SiteGenesis] Setting up inventory monitoring for:",
+		player.Name
+	)
+
+
+	inventoryStates[player] = {
+
+		inventory = {},
+
+	}
+
+
+	-----------------------------------------------------------
+	-- BACKPACK
+	-----------------------------------------------------------
+
+	local backpack =
+		player:WaitForChild("Backpack")
+
+
+	monitorInventoryContainer(
+		player,
+		backpack
+	)
+
+
+	-----------------------------------------------------------
+	-- CHARACTER
+	-----------------------------------------------------------
+
+	local function setupCharacter(character)
+
+		print(
+			"[SiteGenesis] Character detected:",
+			player.Name
+		)
+
+
+		monitorInventoryContainer(
+			player,
+			character
+		)
+
+
+		-------------------------------------------------------
+		-- waiting for tools
+		-------------------------------------------------------
+
+		task.wait(0.5)
+
+
+		if inventoryStates[player] then
+
+			inventoryStates[player].inventory =
+				getPlayerInventory(player)
+
+
+			print(
+				"[SiteGenesis] Initial inventory loaded for:",
+				player.Name
+			)
+
+		end
+
+	end
+
+
+	-----------------------------------------------------------
+	-- CHARACTER ADDED
+	-----------------------------------------------------------
+
+	player.CharacterAdded:Connect(
+		setupCharacter
+	)
+
+
+	-----------------------------------------------------------
+	-- CHARACTER CURRENT
+	-----------------------------------------------------------
+
+	if player.Character then
+
+		task.spawn(
+			setupCharacter,
+			player.Character
+		)
+
+	end
+
 end
 
 local function getRadioState(player)
@@ -115,6 +646,8 @@ Players.PlayerAdded:Connect(function(player)
 		serverName = serverName,
 		placeId = game.PlaceId
 	})
+	
+	setupInventoryMonitoring(player)
 
 	player:GetPropertyChangedSignal("Team"):Connect(function()
 
@@ -194,11 +727,14 @@ end)
 
 
 Players.PlayerRemoving:Connect(function(player)
+	
 
 	print(
 		"[SiteGenesis] PlayerRemoving:",
 		player.Name
 	)
+	
+	inventoryStates[player] = nil
 
 	sendEvent({
 		type = "playerLeave",
@@ -388,7 +924,15 @@ local function normalizeServerMessageText(rawText)
 	return normalized
 end
 
-local function appendSystemGenesisRadioMessage(player, messageText)
+local function escapeRichText(text)
+	text = text:gsub("&", "&amp;")
+	text = text:gsub("<", "&lt;")
+	text = text:gsub(">", "&gt;")
+	text = text:gsub("\"", "&quot;")
+	return text
+end
+
+local function appendSystemGenesisRadioMessage(player, messageText, radioLabel)
 	local playerGui = player:FindFirstChild("PlayerGui")
 
 	if not playerGui then
@@ -415,13 +959,15 @@ local function appendSystemGenesisRadioMessage(player, messageText)
 
 	local clone = scrollingFrame.CloneMe:Clone()
 	clone.Name = "SystemGenesisMessage"
-	clone.Text = '<font color="#4BD5FF">[SystemGenesis]</font> - ' .. messageText
+	clone.Text = '<font color="#4BD5FF">[' .. radioLabel .. ']</font> - ' .. escapeRichText(messageText)
 	clone.Parent = scrollingFrame
 	clone.Visible = true
 	scrollingFrame.CanvasPosition = Vector2.new(0, 99999)
 
 	return true
 end
+
+local ALL_SERVERS_SENTINEL = "*"
 
 local function applyServerMessageAction(action)
 	local metadata = action.metadata
@@ -438,7 +984,9 @@ local function applyServerMessageAction(action)
 		return false
 	end
 
-	if tostring(targetServerId) ~= tostring(serverId) then
+	local isBroadcastToAll = targetServerId == ALL_SERVERS_SENTINEL
+
+	if not isBroadcastToAll and tostring(targetServerId) ~= tostring(serverId) then
 		return false
 	end
 
@@ -448,11 +996,15 @@ local function applyServerMessageAction(action)
 		warn("Cannot send server message: empty content")
 		return false
 	end
+	
+	local radioLabel = (type(action.username) == "string" and action.username ~= "")
+		and action.username
+		or "SystemGenesis"
 
 	local delivered = 0
 
 	for _, player in ipairs(Players:GetPlayers()) do
-		if appendSystemGenesisRadioMessage(player, messageText) then
+		if appendSystemGenesisRadioMessage(player, messageText, radioLabel) then
 			delivered += 1
 		end
 	end
@@ -692,29 +1244,7 @@ local function applyModerationAction(action)
 	warn("Unsupported moderation action:", actionType)
 	return false
 end
--- // Attempt to save an event if it's not sent to the server
-local eventQueue = {}
 
-local function sendEvent(data)
-	local success, response = pcall(function()
-		return HttpService:RequestAsync({
-			Url = API_URL,
-			Method = "POST",
-			Headers = {
-				["Content-Type"] = "application/json",
-				["x-api-key"] = API_KEY
-			},
-			Body = HttpService:JSONEncode(data)
-		})
-	end)
-
-	if success and response.Success then
-		print("Event sent:", response.StatusCode)
-	else
-		warn("Failed sending event, queuing for retry")
-		table.insert(eventQueue, data)
-	end
-end
 
 task.spawn(function()
 	while true do
