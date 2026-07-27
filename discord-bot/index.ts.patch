@@ -1,0 +1,80 @@
+--- /tmp/index.orig.ts	2026-07-27 03:31:12.322457551 +0000
++++ index.ts	2026-07-27 03:31:00.544705141 +0000
+@@ -539,28 +539,6 @@
+             return;
+         }
+ 
+-        const isAdminInvoker =
+-            interaction.memberPermissions?.has(
+-                PermissionFlagsBits.Administrator
+-            ) ?? false;
+-
+-        if (isAdminInvoker) {
+-            const sourceChannelName =
+-                interaction.channel?.isTextBased() &&
+-                "name" in interaction.channel &&
+-                typeof interaction.channel.name === "string"
+-                    ? interaction.channel.name
+-                    : "unknown-channel";
+-
+-            await logDiscordCommandUsage(
+-                interaction.guild,
+-                interaction.user,
+-                interaction.commandName,
+-                formatCommandOptions(interaction),
+-                sourceChannelName
+-            );
+-        }
+-
+         /**
+          * Safeguard against the 3-second interaction
+          * response window.
+@@ -572,6 +550,12 @@
+          * alive for up to 15 minutes and prevents
+          * "Unknown interaction" (10062) errors later,
+          * including inside the error handler itself.
++         *
++         * This MUST be armed before any other await in this
++         * handler (e.g. the admin usage-logging call below),
++         * otherwise there's a window where a slow await can
++         * burn through the 3-second budget with no safety
++         * net in place yet.
+          */
+         const deferTimer = setTimeout(() => {
+             if (!interaction.replied && !interaction.deferred) {
+@@ -584,6 +568,35 @@
+             }
+         }, 2000);
+ 
++        const isAdminInvoker =
++            interaction.memberPermissions?.has(
++                PermissionFlagsBits.Administrator
++            ) ?? false;
++
++        if (isAdminInvoker) {
++            const sourceChannelName =
++                interaction.channel?.isTextBased() &&
++                "name" in interaction.channel &&
++                typeof interaction.channel.name === "string"
++                    ? interaction.channel.name
++                    : "unknown-channel";
++
++            /**
++             * Fire-and-forget: logDiscordCommandUsage already
++             * catches its own errors internally, and it can
++             * involve slow channel/category creation calls.
++             * It must not block the command from executing
++             * (and deferring) within Discord's response window.
++             */
++            void logDiscordCommandUsage(
++                interaction.guild,
++                interaction.user,
++                interaction.commandName,
++                formatCommandOptions(interaction),
++                sourceChannelName
++            );
++        }
++
+         try {
+ 
+             await command.execute(

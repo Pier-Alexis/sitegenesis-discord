@@ -24,6 +24,14 @@ export const config = {
             "https://registry.rover.link/api/guilds/{guildId}/roblox-to-discord/{robloxUserId}"
     },
 
+    bloxlink: {
+        apiKey: process.env.BLOXLINK_API_KEY,
+        guildId: process.env.BLOXLINK_GUILD_ID,
+        robloxToDiscordUrlTemplate:
+            process.env.BLOXLINK_ROBLOX_TO_DISCORD_URL_TEMPLATE ??
+            "https://api.blox.link/v4/public/guilds/{guildId}/roblox-to-discord/{robloxUserId}"
+    },
+
     botName: "Site-Genesis",
     version: "0.1.0",
 

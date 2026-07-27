@@ -11,6 +11,8 @@ type RoverLookupResponse = {
     user?: {
         id?: string;
     };
+    /** Bloxlink's roblox-to-discord response shape: { discordIDs: ["123..."] } */
+    discordIDs?: unknown;
     data?: unknown;
     result?: unknown;
 };
@@ -57,6 +59,10 @@ function extractDiscordId(payload: unknown): string | null {
         return typed.user.id;
     }
 
+    if (Array.isArray(typed.discordIDs) && isSnowflake(typed.discordIDs[0])) {
+        return typed.discordIDs[0];
+    }
+
     if (Array.isArray(typed.data)) {
         for (const entry of typed.data) {
             const found = extractDiscordId(entry);
@@ -81,7 +87,42 @@ function extractDiscordId(payload: unknown): string | null {
     return null;
 }
 
-async function resolveDiscordIdFromRobloxUserId(robloxUserId: string): Promise<string | null> {
+async function resolveDiscordIdFromRoblox_Bloxlink(robloxUserId: string): Promise<string | null> {
+    const apiKey = config.bloxlink.apiKey;
+    const urlTemplate = config.bloxlink.robloxToDiscordUrlTemplate;
+
+    if (!apiKey || !urlTemplate) {
+        return null;
+    }
+
+    const guildId = config.bloxlink.guildId ?? config.guildId;
+    if (!guildId) {
+        return null;
+    }
+
+    const url = urlTemplate
+        .replace("{guildId}", encodeURIComponent(guildId))
+        .replace("{robloxUserId}", encodeURIComponent(robloxUserId));
+
+    const response = await fetch(url, {
+        method: "GET",
+        headers: {
+            Accept: "application/json",
+            // Bloxlink's Server API key is sent as-is, no "Bearer" prefix.
+            Authorization: apiKey
+        },
+        signal: AbortSignal.timeout(7000)
+    });
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const payload = await response.json();
+    return extractDiscordId(payload);
+}
+
+async function resolveDiscordIdFromRoblox_RoVer(robloxUserId: string): Promise<string | null> {
     const apiKey = config.rover.apiKey;
     const urlTemplate = config.rover.robloxToDiscordUrlTemplate;
 
@@ -119,6 +160,20 @@ async function resolveDiscordIdFromRobloxUserId(robloxUserId: string): Promise<s
     return extractDiscordId(payload);
 }
 
+/**
+ * Tries Bloxlink first (primary verification provider), then falls
+ * back to RoVer if Bloxlink isn't configured or finds no match. If
+ * you only run one provider, the unconfigured one is a no-op.
+ */
+async function resolveDiscordIdFromRobloxUserId(robloxUserId: string): Promise<string | null> {
+    const bloxlinkResult = await resolveDiscordIdFromRoblox_Bloxlink(robloxUserId);
+    if (bloxlinkResult) {
+        return bloxlinkResult;
+    }
+
+    return resolveDiscordIdFromRoblox_RoVer(robloxUserId);
+}
+
 export async function notifyDiscordBanByUser(user: User, guild: Guild, reason: string): Promise<BanDmResult> {
     try {
         await user.send({
@@ -154,7 +209,10 @@ export async function notifyRobloxBanByUserId(input: {
     robloxUsername: string;
     reason: string;
 }): Promise<BanDmResult> {
-    if (!config.rover.apiKey || !config.rover.robloxToDiscordUrlTemplate) {
+    const bloxlinkConfigured = Boolean(config.bloxlink.apiKey && config.bloxlink.robloxToDiscordUrlTemplate);
+    const roverConfigured = Boolean(config.rover.apiKey && config.rover.robloxToDiscordUrlTemplate);
+
+    if (!bloxlinkConfigured && !roverConfigured) {
         return {
             delivered: false,
             reason: "disabled"
@@ -166,7 +224,7 @@ export async function notifyRobloxBanByUserId(input: {
     try {
         discordUserId = await resolveDiscordIdFromRobloxUserId(input.robloxUserId);
     } catch (error) {
-        console.warn("RoVer lookup failed", {
+        console.warn("Roblox-to-Discord lookup failed", {
             robloxUserId: input.robloxUserId,
             robloxUsername: input.robloxUsername,
             error

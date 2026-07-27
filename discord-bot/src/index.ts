@@ -539,6 +539,35 @@ client.on(
             return;
         }
 
+        /**
+         * Safeguard against the 3-second interaction
+         * response window.
+         *
+         * If a command hasn't replied or deferred within
+         * 2 seconds (e.g. it's doing a slow DB call, API
+         * request, etc. before its first reply), we defer
+         * automatically. This keeps the interaction token
+         * alive for up to 15 minutes and prevents
+         * "Unknown interaction" (10062) errors later,
+         * including inside the error handler itself.
+         *
+         * This MUST be armed before any other await in this
+         * handler (e.g. the admin usage-logging call below),
+         * otherwise there's a window where a slow await can
+         * burn through the 3-second budget with no safety
+         * net in place yet.
+         */
+        const deferTimer = setTimeout(() => {
+            if (!interaction.replied && !interaction.deferred) {
+                interaction.deferReply().catch(deferError => {
+                    console.error(
+                        `Failed to auto-defer interaction for command "${interaction.commandName}":`,
+                        deferError
+                    );
+                });
+            }
+        }, 2000);
+
         const isAdminInvoker =
             interaction.memberPermissions?.has(
                 PermissionFlagsBits.Administrator
@@ -552,7 +581,14 @@ client.on(
                     ? interaction.channel.name
                     : "unknown-channel";
 
-            await logDiscordCommandUsage(
+            /**
+             * Fire-and-forget: logDiscordCommandUsage already
+             * catches its own errors internally, and it can
+             * involve slow channel/category creation calls.
+             * It must not block the command from executing
+             * (and deferring) within Discord's response window.
+             */
+            void logDiscordCommandUsage(
                 interaction.guild,
                 interaction.user,
                 interaction.commandName,
@@ -560,29 +596,6 @@ client.on(
                 sourceChannelName
             );
         }
-
-        /**
-         * Safeguard against the 3-second interaction
-         * response window.
-         *
-         * If a command hasn't replied or deferred within
-         * 2 seconds (e.g. it's doing a slow DB call, API
-         * request, etc. before its first reply), we defer
-         * automatically. This keeps the interaction token
-         * alive for up to 15 minutes and prevents
-         * "Unknown interaction" (10062) errors later,
-         * including inside the error handler itself.
-         */
-        const deferTimer = setTimeout(() => {
-            if (!interaction.replied && !interaction.deferred) {
-                interaction.deferReply().catch(deferError => {
-                    console.error(
-                        `Failed to auto-defer interaction for command "${interaction.commandName}":`,
-                        deferError
-                    );
-                });
-            }
-        }, 2000);
 
         try {
 
