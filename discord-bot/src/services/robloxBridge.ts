@@ -311,27 +311,20 @@ export async function forwardCaseToBackend(payload: {
     return response.json();
 }
 
-export async function forwardBanReasonEditToBackend(input: {
-    userId: string;
-    reason: string;
-    moderator: string;
-}) {
+export async function fetchLatestBanForUser(userId: string): Promise<{ duration: number | null; createdAt: number } | null> {
     const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
-    const response = await fetch(`${baseUrl}/bans/${encodeURIComponent(input.userId)}`, {
-        method: "PATCH",
-        headers: buildApiHeaders(),
-        body: JSON.stringify({
-            reason: input.reason,
-            moderator: input.moderator
-        })
+    const response = await fetch(`${baseUrl}/bans/${encodeURIComponent(userId)}/latest`, {
+        headers: buildApiHeaders()
     });
 
-    if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        throw new Error(
-            `Backend ban edit request failed: ${response.status}${errorText ? ` - ${errorText}` : ""}`
-        );
+    if (response.status === 404) {
+        return null;
     }
 
-    return response.json();
+    if (!response.ok) {
+        throw new Error(`Failed to fetch latest ban: ${response.status}`);
+    }
+
+    const data = await response.json() as { ban: { duration: number | null; createdAt: number } };
+    return { duration: data.ban.duration, createdAt: data.ban.createdAt };
 }
