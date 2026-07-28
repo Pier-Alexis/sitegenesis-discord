@@ -3,38 +3,55 @@ import {
     ButtonBuilder,
     ButtonStyle,
     ChatInputCommandInteraction,
+    Client,
+    GuildMember,
     MessageFlags,
     ModalBuilder,
     PermissionFlagsBits,
     SlashCommandBuilder,
     StringSelectMenuBuilder,
     TextInputBuilder,
-    TextInputStyle,
-    UserSelectMenuBuilder
+    TextInputStyle
 } from "discord.js";
 import { getRobloxId } from "../services/bloxlinkSync.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
+import { MAIN_GUILD_ID } from "../services/serverMsgPermissions.js";
 import {
     buildModerationPayload,
     fetchAssignableGroupRoles,
     forwardModerationToBackend,
+    isManagedGroupName,
     resolveRobloxGroupMemberships,
+    resolveRobloxUserIdByUsername,
     type RobloxGroupMembership
 } from "../services/robloxBridge.js";
 
 const COMPONENT_TIMEOUT_MS = 120_000;
 const MAX_SELECT_OPTIONS = 25;
 
-const USER_SELECT_ID = "setgrouprank_user";
+const SOURCE_DISCORD_BUTTON_ID = "setgrouprank_source_discord";
+const SOURCE_ROBLOX_BUTTON_ID = "setgrouprank_source_roblox";
+const DISCORD_INPUT_MODAL_ID = "setgrouprank_discord_input";
+const DISCORD_INPUT_FIELD_ID = "discord_input";
+const ROBLOX_INPUT_MODAL_ID = "setgrouprank_roblox_input";
+const ROBLOX_INPUT_FIELD_ID = "roblox_input";
 const GROUP_SELECT_ID = "setgrouprank_group";
 const SET_BUTTON_ID = "setgrouprank_set";
 const RANK_SELECT_ID = "setgrouprank_rank";
 const REASON_MODAL_ID = "setgrouprank_reason";
 const REASON_INPUT_ID = "reason";
 
+const ROBLOX_USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
+
+type ResolvedTarget = {
+    robloxUserId: string;
+    /** Shown in prompts and stored in the moderation log. */
+    label: string;
+};
+
 export const data = new SlashCommandBuilder()
     .setName("setgrouprank")
-    .setDescription("Queue a Roblox group rank change for a linked member")
+    .setDescription("Queue a Roblox group rank change for a member")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .setDMPermission(false);
 
@@ -43,6 +60,61 @@ function timeoutReply() {
         content: "⌛ That step timed out. Run `/setgrouprank` again.",
         components: []
     };
+}
+
+/**
+ * Finds a member in the MAIN community Discord guild (MAIN_GUILD_ID) —
+ * NOT the guild the bot's other commands are restricted to — by raw
+ * mention, ID, or username. Members are looked up manually here (rather
+ * than a UserSelectMenu) specifically because the picker is scoped to
+ * whatever guild the interaction is running in, which may not be the
+ * main guild.
+ */
+async function findMainGuildMemberByInput(client: Client, rawInput: string): Promise<GuildMember | null> {
+    const guild = client.guilds.cache.get(MAIN_GUILD_ID) ?? await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+
+    if (!guild) {
+        return null;
+    }
+
+    const trimmed = rawInput.trim();
+    const idMatch = trimmed.match(/^<@!?(\d+)>$/) ?? (/^\d{17,20}$/.test(trimmed) ? [null, trimmed] : null);
+
+    if (idMatch?.[1]) {
+        const byId = await guild.members.fetch(idMatch[1]).catch(() => null);
+        if (byId) {
+            return byId;
+        }
+    }
+
+    const normalized = trimmed.replace(/^@/, "").toLowerCase();
+
+    if (normalized.length === 0) {
+        return null;
+    }
+
+    const cached = guild.members.cache.find((member: GuildMember) =>
+        member.user.username.toLowerCase() === normalized ||
+        member.user.tag.toLowerCase() === normalized ||
+        member.displayName.toLowerCase() === normalized
+    );
+
+    if (cached) {
+        return cached;
+    }
+
+    const searchResults = await guild.members.fetch({ query: normalized, limit: 10 }).catch(() => null);
+
+    if (!searchResults) {
+        return null;
+    }
+
+    return (
+        searchResults.find((member: GuildMember) => member.user.username.toLowerCase() === normalized) ??
+        searchResults.find((member: GuildMember) => member.displayName.toLowerCase() === normalized) ??
+        searchResults.first() ??
+        null
+    );
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -64,67 +136,143 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     /**
-     * STEP 1 — Select User
+     * STEP 1 — Pick how the target is identified.
      *
-     * Lets the moderator pick any Discord member instead of typing a
-     * Roblox username. We resolve their linked Roblox account and pull
-     * every group they're actually in, so step 2 only ever lists real
-     * memberships.
+     * "Discord User" looks up a member by manually-typed username/ID in
+     * the MAIN community guild, then resolves their linked Roblox account
+     * via Bloxlink. "Roblox Username" skips Discord entirely and resolves
+     * a Roblox account directly by username.
      */
-    const userSelectRow = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-            .setCustomId(USER_SELECT_ID)
-            .setPlaceholder("Select the Discord member to rank")
-            .setMinValues(1)
-            .setMaxValues(1)
+    const sourceButtonsRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+            .setCustomId(SOURCE_DISCORD_BUTTON_ID)
+            .setLabel("Discord User")
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId(SOURCE_ROBLOX_BUTTON_ID)
+            .setLabel("Roblox Username")
+            .setStyle(ButtonStyle.Secondary)
     );
 
     await interaction.reply({
-        content: "**Step 1/4 — Select a user**\nWho do you want to change the Roblox group rank of?",
-        components: [userSelectRow],
+        content:
+            "**Step 1/4 — Identify the target**\n" +
+            "How do you want to specify who this rank change is for?",
+        components: [sourceButtonsRow],
         flags: MessageFlags.Ephemeral
     });
 
     const promptMessage = await interaction.fetchReply();
 
-    const userInteraction = await promptMessage
+    const sourceInteraction = await promptMessage
         .awaitMessageComponent({
             filter: componentInteraction =>
                 componentInteraction.user.id === interaction.user.id &&
-                componentInteraction.customId === USER_SELECT_ID,
+                (componentInteraction.customId === SOURCE_DISCORD_BUTTON_ID ||
+                    componentInteraction.customId === SOURCE_ROBLOX_BUTTON_ID),
             time: COMPONENT_TIMEOUT_MS
         })
         .catch(() => null);
 
-    if (!userInteraction || !userInteraction.isUserSelectMenu()) {
+    if (!sourceInteraction || !sourceInteraction.isButton()) {
         await interaction.editReply(timeoutReply());
         return;
     }
 
-    const targetUser = userInteraction.users.first();
+    const usingDiscordSource = sourceInteraction.customId === SOURCE_DISCORD_BUTTON_ID;
 
-    if (!targetUser) {
-        await userInteraction.update({ content: "⚠️ No user was selected.", components: [] });
+    /**
+     * showModal() must be the direct response to the button click — it
+     * can't be preceded by deferUpdate()/update().
+     */
+    const inputModal = new ModalBuilder()
+        .setCustomId(usingDiscordSource ? DISCORD_INPUT_MODAL_ID : ROBLOX_INPUT_MODAL_ID)
+        .setTitle(usingDiscordSource ? "Discord Target" : "Roblox Target")
+        .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                    .setCustomId(usingDiscordSource ? DISCORD_INPUT_FIELD_ID : ROBLOX_INPUT_FIELD_ID)
+                    .setLabel(usingDiscordSource ? "Discord username or ID" : "Roblox username")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMaxLength(37)
+            )
+        );
+
+    await sourceInteraction.showModal(inputModal);
+
+    const inputModalSubmission = await sourceInteraction
+        .awaitModalSubmit({
+            filter: modalInteraction =>
+                modalInteraction.user.id === interaction.user.id &&
+                modalInteraction.customId === (usingDiscordSource ? DISCORD_INPUT_MODAL_ID : ROBLOX_INPUT_MODAL_ID),
+            time: COMPONENT_TIMEOUT_MS
+        })
+        .catch(() => null);
+
+    if (!inputModalSubmission) {
+        await interaction.editReply(timeoutReply());
         return;
     }
 
-    await userInteraction.deferUpdate();
+    await inputModalSubmission.deferUpdate();
 
-    const targetRobloxId = await getRobloxId(targetUser.id);
+    let target: ResolvedTarget;
 
-    if (!targetRobloxId) {
-        await interaction.editReply({
-            content: `⚠️ ${targetUser.tag} does not have a Roblox account linked via Bloxlink.`,
-            components: []
-        });
-        return;
+    if (usingDiscordSource) {
+        const rawInput = inputModalSubmission.fields.getTextInputValue(DISCORD_INPUT_FIELD_ID).trim();
+
+        const member = await findMainGuildMemberByInput(interaction.client, rawInput);
+
+        if (!member) {
+            await interaction.editReply({
+                content: `⚠️ Could not find "${rawInput}" in the main Discord server.`,
+                components: []
+            });
+            return;
+        }
+
+        const robloxUserId = await getRobloxId(member.id);
+
+        if (!robloxUserId) {
+            await interaction.editReply({
+                content: `⚠️ ${member.user.tag} does not have a Roblox account linked via Bloxlink.`,
+                components: []
+            });
+            return;
+        }
+
+        target = { robloxUserId, label: member.user.tag };
+    } else {
+        const robloxUsername = inputModalSubmission.fields.getTextInputValue(ROBLOX_INPUT_FIELD_ID).trim();
+
+        if (!ROBLOX_USERNAME_PATTERN.test(robloxUsername)) {
+            await interaction.editReply({
+                content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
+                components: []
+            });
+            return;
+        }
+
+        const robloxUserId = await resolveRobloxUserIdByUsername(robloxUsername);
+
+        if (!robloxUserId) {
+            await interaction.editReply({
+                content: `⚠️ Could not find a Roblox account named "${robloxUsername}".`,
+                components: []
+            });
+            return;
+        }
+
+        target = { robloxUserId, label: `${robloxUsername} (Roblox)` };
     }
 
-    const targetMemberships = await resolveRobloxGroupMemberships(targetRobloxId);
+    const targetMemberships = await resolveRobloxGroupMemberships(target.robloxUserId);
+    const managedMemberships = targetMemberships.filter(membership => isManagedGroupName(membership.groupName));
 
-    if (targetMemberships.length === 0) {
+    if (managedMemberships.length === 0) {
         await interaction.editReply({
-            content: `⚠️ ${targetUser.tag}'s linked Roblox account isn't a member of any group I can see.`,
+            content: `⚠️ ${target.label} isn't in any "Site: 45" group this bot can manage.`,
             components: []
         });
         return;
@@ -133,8 +281,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     /**
      * STEP 2 — Select Group
      *
-     * Only groups the target actually belongs to are listed, and each
-     * option shows their current rank in that group.
+     * Only "Site: 45" groups the target belongs to are listed — i.e.
+     * only groups this bot's Roblox API key actually has permission to
+     * act on.
      *
      * The executor is only checked for plain membership in the chosen
      * group for now. Once HR-tier ranks per group are finalized, this is
@@ -142,7 +291,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
      * any membership) should be added.
      */
     const membershipByGroupId = new Map<string, RobloxGroupMembership>(
-        targetMemberships.map(membership => [String(membership.groupId), membership])
+        managedMemberships.map(membership => [String(membership.groupId), membership])
     );
 
     const groupSelectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -152,7 +301,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             .setMinValues(1)
             .setMaxValues(1)
             .addOptions(
-                targetMemberships.slice(0, MAX_SELECT_OPTIONS).map(membership => ({
+                managedMemberships.slice(0, MAX_SELECT_OPTIONS).map(membership => ({
                     label: membership.groupName.slice(0, 100),
                     description: `Current rank: ${membership.roleName} (${membership.roleRank})`.slice(0, 100),
                     value: String(membership.groupId)
@@ -161,7 +310,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     );
 
     await interaction.editReply({
-        content: `**Step 2/4 — Select a group**\nTarget: ${targetUser.tag}\nWhich of their groups do you want to change?`,
+        content: `**Step 2/4 — Select a group**\nTarget: ${target.label}\nWhich of their groups do you want to change?`,
         components: [groupSelectRow]
     });
 
@@ -231,7 +380,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({
         content:
             "**Step 3/4 — Confirm**\n" +
-            `Target: ${targetUser.tag}\n` +
+            `Target: ${target.label}\n` +
             `Group: ${selectedMembership.groupName}\n` +
             `Current rank: ${selectedMembership.roleName} (${selectedMembership.roleRank})\n\n` +
             "Press **Set Rank** to choose the new rank.",
@@ -263,9 +412,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     /**
-     * STEP 4 — Shows all the ranks in the group below the Owner /
-     * "SystemGenesis" tier (fetchAssignableGroupRoles already excludes
-     * rank 255, so that seat can never show up here).
+     * STEP 4 — Shows the list of ranks staff can assign in this group
+     * (fetchAssignableGroupRoles filters out EXCLUDED_RANKS, i.e. the
+     * Owner/"SystemGenesis" tier — see robloxBridge.ts to add more
+     * excluded ranks if needed).
      */
     const rankSelectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
@@ -284,7 +434,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await setInteraction.update({
         content:
             "**Step 4/4 — Select the new rank**\n" +
-            `Target: ${targetUser.tag}\n` +
+            `Target: ${target.label}\n` +
             `Group: ${selectedMembership.groupName}`,
         components: [rankSelectRow]
     });
@@ -354,8 +504,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const payload = buildModerationPayload({
         action: "setGroupRank",
-        targetUserId: targetRobloxId,
-        targetUsername: targetUser.username,
+        targetUserId: target.robloxUserId,
+        targetUsername: target.label,
         reason,
         moderator: interaction.user.tag,
         metadata: {
@@ -374,8 +524,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             type: "setgrouprank",
             guildId: guild.id,
             guildName: guild.name,
-            targetUserId: targetRobloxId,
-            targetUserTag: `${targetUser.tag} (${targetRobloxId})`,
+            targetUserId: target.robloxUserId,
+            targetUserTag: `${target.label} (${target.robloxUserId})`,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
             reason: `Set role to ${newRankLabel} in ${selectedMembership.groupName}. ${reason}`,
@@ -385,7 +535,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
         await interaction.editReply({
             content:
-                `✅ Queued rank change for ${targetUser.tag} to **${selectedRole.name}** ` +
+                `✅ Queued rank change for ${target.label} to **${selectedRole.name}** ` +
                 `in **${selectedMembership.groupName}**.\nReason: ${reason}`,
             components: []
         });

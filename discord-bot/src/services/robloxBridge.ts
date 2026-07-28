@@ -246,8 +246,11 @@ export type RobloxGroupRole = {
 
 /** Roblox always reserves rank 255 for the group Owner. In this project
  * that seat is held by the "SystemGenesis" account, so it's never a rank
- * staff should be able to hand out through /setgrouprank. */
-const OWNER_RANK = 255;
+ * staff should be able to hand out through /setgrouprank.
+ *
+ * Add more rank numbers here if other tiers (e.g. Site Director) should
+ * also be hidden from the /setgrouprank rank picker. */
+export const EXCLUDED_RANKS: readonly number[] = [255];
 
 /**
  * Returns every role in a Roblox group EXCEPT the Owner/"SystemGenesis"
@@ -269,9 +272,21 @@ export async function fetchAssignableGroupRoles(groupId: string): Promise<Roblox
             isFiniteNumber(role.id) &&
             Boolean(role.name) &&
             isFiniteNumber(role.rank) &&
-            role.rank < OWNER_RANK
+            !EXCLUDED_RANKS.includes(role.rank)
         )
         .sort((a, b) => a.rank - b.rank);
+}
+
+/**
+ * Only groups whose name contains "Site: 45" (formatting-tolerant) are
+ * groups the bot's Roblox API key actually has permission to manage.
+ * Add more patterns here (e.g. another `||` alternative) if the bot ever
+ * gets permission on additional groups with a different naming scheme.
+ */
+const MANAGED_GROUP_NAME_PATTERN = /site\s*:?\s*45/i;
+
+export function isManagedGroupName(groupName: string): boolean {
+    return MANAGED_GROUP_NAME_PATTERN.test(groupName);
 }
 
 export function buildModerationPayload(input: {
