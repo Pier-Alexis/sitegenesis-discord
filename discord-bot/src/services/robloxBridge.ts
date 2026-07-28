@@ -101,19 +101,17 @@ export async function resolveRobloxUserIdByUsername(username: string): Promise<s
     return fetchRobloxUserIdByUsername(username);
 }
 
-export type RobloxGroupMembership = {
-    groupId: number;
-    groupName: string;
-    roleId: number;
-    roleName: string;
-    roleRank: number;
-};
-
-async function fetchRobloxGroupRolesForUser(userId: string): Promise<RobloxGroupMembership[]> {
+async function fetchRobloxGroupRolesForUser(userId: string) {
     const response = await fetch(`https://groups.roblox.com/v2/users/${encodeURIComponent(userId)}/groups/roles`);
 
     if (!response.ok) {
-        return [] as RobloxGroupMembership[];
+        return [] as Array<{
+            groupId: number;
+            groupName: string;
+            roleId: number;
+            roleName: string;
+            roleRank: number;
+        }>;
     }
 
     const payload = await response.json() as RobloxUserGroupsResponse;
@@ -138,16 +136,6 @@ async function fetchRobloxGroupRolesForUser(userId: string): Promise<RobloxGroup
             roleRank
         }];
     });
-}
-
-/**
- * Returns every Roblox group a user belongs to, along with the role/rank
- * they currently hold in each. Used by /setgrouprank's "Select User" step
- * to populate the "Select Group" step with only the groups the target is
- * actually in.
- */
-export async function resolveRobloxGroupMemberships(userId: string): Promise<RobloxGroupMembership[]> {
-    return fetchRobloxGroupRolesForUser(userId);
 }
 
 async function fetchGroupRoleName(groupId: string, roleId: number): Promise<string | null> {
@@ -238,42 +226,6 @@ export async function resolveCurrentGroupRole(input: {
     };
 }
 
-export type RobloxGroupRole = {
-    id: number;
-    name: string;
-    rank: number;
-};
-
-/** Roblox always reserves rank 255 for the group Owner. In this project
- * that seat is held by the "SystemGenesis" account, so it's never a rank
- * staff should be able to hand out through /setgrouprank. */
-const OWNER_RANK = 255;
-
-/**
- * Returns every role in a Roblox group EXCEPT the Owner/"SystemGenesis"
- * rank (255), sorted ascending by rank. Used to populate the rank picker
- * in /setgrouprank so that tier can never be selected from the menu.
- */
-export async function fetchAssignableGroupRoles(groupId: string): Promise<RobloxGroupRole[]> {
-    const response = await fetch(`https://groups.roblox.com/v1/groups/${encodeURIComponent(groupId)}/roles`);
-
-    if (!response.ok) {
-        return [];
-    }
-
-    const payload = await response.json() as RobloxGroupRolesResponse;
-    const roles = payload.roles ?? [];
-
-    return roles
-        .filter((role): role is { id: number; name: string; rank: number } =>
-            isFiniteNumber(role.id) &&
-            Boolean(role.name) &&
-            isFiniteNumber(role.rank) &&
-            role.rank < OWNER_RANK
-        )
-        .sort((a, b) => a.rank - b.rank);
-}
-
 export function buildModerationPayload(input: {
     action: RobloxModerationAction;
     targetUserId: string;
@@ -359,44 +311,3 @@ export async function forwardCaseToBackend(payload: {
     return response.json();
 }
 
-export async function fetchLatestBanForUser(userId: string): Promise<{ duration: number | null; createdAt: number } | null> {
-    const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
-    const response = await fetch(`${baseUrl}/bans/${encodeURIComponent(userId)}/latest`, {
-        headers: buildApiHeaders()
-    });
-
-    if (response.status === 404) {
-        return null;
-    }
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch latest ban: ${response.status}`);
-    }
-
-    const data = await response.json() as { ban: { duration: number | null; createdAt: number } };
-    return { duration: data.ban.duration, createdAt: data.ban.createdAt };
-}
-
-export type ActiveBanEntry = {
-    id: number;
-    userId: string;
-    username: string;
-    reason: string;
-    moderator: string;
-    duration: number | null;
-    createdAt: number;
-};
-
-export async function fetchActiveBans(): Promise<ActiveBanEntry[]> {
-    const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
-    const response = await fetch(`${baseUrl}/bans/active`, {
-        headers: buildApiHeaders()
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch active bans: ${response.status}`);
-    }
-
-    const data = await response.json() as { bans: ActiveBanEntry[] };
-    return data.bans;
-}

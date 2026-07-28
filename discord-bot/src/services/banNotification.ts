@@ -165,7 +165,7 @@ async function resolveDiscordIdFromRoblox_RoVer(robloxUserId: string): Promise<s
  * back to RoVer if Bloxlink isn't configured or finds no match. If
  * you only run one provider, the unconfigured one is a no-op.
  */
-async function resolveDiscordIdFromRobloxUserId(robloxUserId: string): Promise<string | null> {
+export async function resolveDiscordIdFromRobloxUserId(robloxUserId: string): Promise<string | null> {
     const bloxlinkResult = await resolveDiscordIdFromRoblox_Bloxlink(robloxUserId);
     if (bloxlinkResult) {
         return bloxlinkResult;

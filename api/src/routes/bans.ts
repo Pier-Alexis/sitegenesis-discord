@@ -263,5 +263,47 @@ router.get("/bans", (req, res) => {
 
 });
 
+router.get("/bans/:userId/latest", (req, res) => {
+    const { userId } = req.params;
+
+    const ban = db.prepare(`
+        SELECT * FROM bans WHERE userId = ? ORDER BY createdAt DESC, id DESC LIMIT 1
+    `).get(userId);
+
+    if (!ban) {
+        res.status(404).json({ success: false, message: "No ban found for that user" });
+        return;
+    }
+
+    res.json({ success: true, ban });
+});
+
+router.get("/bans/active", (req, res) => {
+    const now = Date.now();
+
+    const rows = db.prepare(`
+        SELECT b.*
+        FROM bans b
+        INNER JOIN (
+            SELECT userId, MAX(createdAt) AS maxCreatedAt
+            FROM bans
+            GROUP BY userId
+        ) latest ON b.userId = latest.userId AND b.createdAt = latest.maxCreatedAt
+        WHERE NOT EXISTS (
+            SELECT 1 FROM moderation_actions m
+            WHERE m.userId = b.userId
+              AND m.action = 'unban'
+              AND m.createdAt > b.createdAt
+        )
+        AND (
+            b.duration IS NULL
+            OR b.duration = -1
+            OR (b.createdAt + (b.duration * 1000)) > ?
+        )
+        ORDER BY b.createdAt DESC
+    `).all(now);
+
+    res.json({ success: true, bans: rows });
+});
 
 export default router;
