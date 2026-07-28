@@ -42,14 +42,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
-    if (!activeBans.length) {
+    const filteredBans = activeBans.filter(ban => ban.username.toLowerCase() !== "testplayer");
+
+    if (!filteredBans.length) {
         await interaction.editReply({ content: "✅ No active bans right now." });
         return;
     }
 
     const now = Date.now();
 
-    const lines = await Promise.all(activeBans.map(async ban => {
+    const lines = await Promise.all(filteredBans.map(async ban => {
         const isPermanent = ban.duration === null || ban.duration === -1;
         const banType = isPermanent ? "Permanent" : "Temporary";
 
@@ -83,7 +85,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }));
 
     // Discord caps messages at 2000 chars — split into multiple messages if the list is long.
-    const header = `📋 **Active bans (${activeBans.length})**\n\n`;
+    const header = `📋 **Active bans (${filteredBans.length})**\n\n`;
     const chunks: string[] = [];
     let current = header;
 
@@ -100,8 +102,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         chunks.push(current);
     }
 
-    await interaction.editReply({ content: chunks[0] });
-    for (const chunk of chunks.slice(1)) {
+    const [firstChunk, ...remainingChunks] = chunks;
+    if (!firstChunk) {
+        await interaction.editReply({ content: "✅ No active bans right now." });
+        return;
+    }
+
+    await interaction.editReply({ content: firstChunk });
+    for (const chunk of remainingChunks) {
         await interaction.followUp({ content: chunk });
     }
 }
