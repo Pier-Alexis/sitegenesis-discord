@@ -263,5 +263,44 @@ router.get("/bans", (req, res) => {
 
 });
 
+router.patch("/bans/:userId", (req, res) => {
+    const { userId } = req.params;
+    const { reason, moderator } = req.body;
+
+    if (!reason || typeof reason !== "string" || !reason.trim()) {
+        res.status(400).json({ success: false, message: "A non-empty reason is required" });
+        return;
+    }
+
+    if (!/^\d+$/.test(userId)) {
+        res.status(400).json({ success: false, message: "userId must be numeric" });
+        return;
+    }
+
+    // There can be multiple historical ban rows per user — only the most
+    // recent one is the "active" ban a moderator would mean to edit.
+    const result = db.prepare(`
+        UPDATE bans
+        SET reason = ?
+        WHERE id = (
+            SELECT id FROM bans
+            WHERE userId = ?
+            ORDER BY createdAt DESC, id DESC
+            LIMIT 1
+        )
+    `).run(reason.trim(), userId);
+
+    if (result.changes === 0) {
+        res.status(404).json({ success: false, message: "No ban found for that user" });
+        return;
+    }
+
+    res.json({
+        success: true,
+        message: "Ban reason updated",
+        moderator: moderator ?? null
+    });
+});
+
 
 export default router;
