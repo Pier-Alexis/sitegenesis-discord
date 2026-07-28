@@ -328,3 +328,27 @@ export async function fetchLatestBanForUser(userId: string): Promise<{ duration:
     const data = await response.json() as { ban: { duration: number | null; createdAt: number } };
     return { duration: data.ban.duration, createdAt: data.ban.createdAt };
 }
+
+export type ActiveBanEntry = {
+    id: number;
+    userId: string;
+    username: string;
+    reason: string;
+    moderator: string;
+    duration: number | null;
+    createdAt: number;
+};
+
+export async function fetchActiveBans(): Promise<ActiveBanEntry[]> {
+    const baseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:3000/api";
+    const response = await fetch(`${baseUrl}/bans/active`, {
+        headers: buildApiHeaders()
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch active bans: ${response.status}`);
+    }
+
+    const data = await response.json() as { bans: ActiveBanEntry[] };
+    return data.bans;
+}
