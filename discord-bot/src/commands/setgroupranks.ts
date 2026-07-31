@@ -364,6 +364,26 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
+    const executorRankInGroup = executorMemberships.find(
+            m => String(m.groupId) === selectedGroupId
+        )?.roleRank ?? 0;
+
+        if (!isAuthorizedRankEditor(selectedGroupId, executorRankInGroup)) {
+            await interaction.editReply({
+                content: `⛔ Your rank in **${selectedMembership.groupName}** doesn't have permission to edit ranks.`,
+                components: []
+            });
+            return;
+        }
+
+        if (selectedMembership.roleRank >= executorRankInGroup) {
+            await interaction.editReply({
+                content: `⛔ You can't edit the rank of someone at or above your own rank in **${selectedMembership.groupName}**.`,
+                components: []
+            });
+            return;
+        }
+
     /**
      * STEP 3 — Select "Set"
      *
