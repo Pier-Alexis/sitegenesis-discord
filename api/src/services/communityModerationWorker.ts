@@ -12,6 +12,10 @@ type ModerationActionRow = {
 
 type ActionMetadata = {
     roleId?: number;
+    /** Which Roblox group this action applies to. Falls back to the
+     *  worker's default ROBLOX_GROUP_ID when omitted (older queued
+     *  actions won't have this field). */
+    groupId?: string;
 };
 
 type WorkerConfig = {
@@ -20,6 +24,39 @@ type WorkerConfig = {
     groupId: string;
     apiKey: string;
 };
+
+/**
+ * Site: 45 Security Department and Site: 45 Mobile Task Force Department —
+ * the two additional groups /setgrouprank can act on besides the default
+ * ROBLOX_GROUP_ID. Keep these in sync with SD_GROUP_ID / MTF_GROUP_ID in
+ * discord-bot/src/services/rankEditAuthorization.ts.
+ *
+ * The Open Cloud API key (ROBLOX_OPEN_CLOUD_API_KEY) must be granted
+ * group-membership-management permission for both of these groups in the
+ * Roblox Creator Dashboard, or requests against them will 401.
+ */
+const SD_GROUP_ID = "225026228";
+const MTF_GROUP_ID = "574906909";
+
+/**
+ * Resolves and validates which group a queued action should act on.
+ * Only the default configured group plus the explicitly allow-listed
+ * groups above are ever acted on — this stops a malformed or tampered
+ * metadata.groupId from pushing a rank change to an arbitrary group.
+ */
+function resolveActionGroupId(config: WorkerConfig, metadata: ActionMetadata): string {
+    const requestedGroupId = metadata.groupId?.trim() || config.groupId;
+    const allowedGroupIds = new Set([config.groupId, SD_GROUP_ID, MTF_GROUP_ID]);
+
+    if (!allowedGroupIds.has(requestedGroupId)) {
+        throw new Error(
+            `Refusing to act on group ${requestedGroupId}: not in the allow-list ` +
+            `(${Array.from(allowedGroupIds).join(", ")}).`
+        );
+    }
+
+    return requestedGroupId;
+}
 
 type RobloxMembership = {
     path?: string;
@@ -206,7 +243,8 @@ async function robloxRequest<T>(
  */
 async function resolveMembershipId(
     config: WorkerConfig,
-    userId: string
+    userId: string,
+    groupId: string
 ): Promise<string> {
     let pageToken: string | undefined;
 
@@ -267,10 +305,9 @@ async function resolveMembershipId(
     } while (pageToken);
 
     throw new Error(
-        `User ${userId} is not a member of group ${config.groupId}.`
+        `User ${userId} is not a member of group ${groupId}.`
     );
 }
-
 /**
  * Checks that a Roblox group role actually exists.
  *
@@ -281,7 +318,8 @@ async function resolveMembershipId(
  */
 async function validateRole(
     config: WorkerConfig,
-    roleId: number
+    roleId: number,
+    groupId: string
 ): Promise<string> {
     let pageToken: string | undefined;
 
@@ -355,20 +393,6 @@ async function executeSetGroupRank(
 ) {
     const metadata = parseMetadata(row.metadata);
 
-    /**
-     * IMPORTANT:
-     *
-     * roleId MUST be the numerical Roblox Group Role ID.
-     *
-     * Do not put the rank number here.
-     * Do not put the role name here.
-     *
-     * Example:
-     *
-     * {
-     *     "roleId": 123456789
-     * }
-     */
     const roleId = metadata.roleId;
 
     if (
@@ -382,46 +406,30 @@ async function executeSetGroupRank(
         );
     }
 
+    const groupId = resolveActionGroupId(config, metadata);
+
     console.log(
         `[CommunityWorker] Processing action ${row.id}: ` +
         `user=${row.username} (${row.userId}), ` +
-        `group=${config.groupId}, roleId=${roleId}`
+        `group=${groupId}, roleId=${roleId}`
     );
 
-    /**
-     * Step 1:
-     * Find the internal Open Cloud membership ID.
-     */
-    const membershipId = await resolveMembershipId(
-        config,
-        row.userId
-    );
+    const membershipId = await resolveMembershipId(config, groupId, row.userId);
 
     console.log(
         `[CommunityWorker] Resolved membershipId=${membershipId} ` +
         `for Roblox user ${row.userId}`
     );
 
-    /**
-     * Step 2:
-     * Verify that the requested role exists.
-     */
-    const rolePath = await validateRole(
-        config,
-        roleId
-    );
+    const rolePath = await validateRole(config, groupId, roleId);
 
     console.log(
         `[CommunityWorker] Validated role ${roleId}: ${rolePath}`
     );
 
-    /**
-     * Step 3:
-     * Change the member's group role.
-     */
     const membershipPath =
         `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
-        `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
+        `${groupId}/memberships/${encodeURIComponent(membershipId)}`;
 
     /**
      * NOTE:
@@ -496,7 +504,7 @@ async function executeSetGroupRank(
 
     console.log(
         `[CommunityWorker] Successfully changed ${row.username} ` +
-        `(${row.userId}) to role ${roleId} in group ${config.groupId}`
+        `(${row.userId}) to role ${roleId} in group ${groupId}`
     );
 }
 
@@ -514,33 +522,27 @@ async function executeRemoveGroupRank(
     config: WorkerConfig,
     row: ModerationActionRow
 ) {
+    const metadata = parseMetadata(row.metadata);
+    const groupId = resolveActionGroupId(config, metadata);
+
     console.log(
         `[CommunityWorker] Processing action ${row.id}: ` +
         `removeGroupRank for user=${row.username} (${row.userId}), ` +
-        `group=${config.groupId}`
+        `group=${groupId}`
     );
 
-    /**
-     * Step 1:
-     * Find the internal Open Cloud membership ID.
-     */
-    const membershipId = await resolveMembershipId(
-        config,
-        row.userId
-    );
+    const membershipId = await resolveMembershipId(config, groupId, row.userId);
 
     console.log(
         `[CommunityWorker] Resolved membershipId=${membershipId} ` +
         `for Roblox user ${row.userId}`
     );
 
-    /**
-     * Step 2:
-     * Unassign the member's current role. No replacement role is set.
-     */
     const membershipPath =
         `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
-        `${config.groupId}/memberships/${encodeURIComponent(membershipId)}`;
+        `${groupId}/memberships/${encodeURIComponent(membershipId)}`;
+
+    // ... the unassignRole call below this is UNCHANGED, leave it as-is ...
 
     console.log(
         `[CommunityWorker] Attempting unassignRole for action ${row.id} ` +
@@ -558,7 +560,7 @@ async function executeRemoveGroupRank(
 
     console.log(
         `[CommunityWorker] Successfully removed group role for ${row.username} ` +
-        `(${row.userId}) in group ${config.groupId}`
+        `(${row.userId}) in group ${groupId}`
     );
 }
 
