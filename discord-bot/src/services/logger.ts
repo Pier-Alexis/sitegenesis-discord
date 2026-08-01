@@ -485,6 +485,52 @@ async function archiveServerCategoryIfEmpty(
 }
 
 /**
+ * Force-archive a Roblox server category regardless of whether every
+ * player thread ended with a "Player Left" event.
+ *
+ * Used when a server goes down through the `serverShutdown` event: the
+ * Roblox server kicks everyone and dies too fast for all the individual
+ * `playerLeave` events to be emitted, so the normal empty-check never
+ * succeeds and the category would stay active forever.
+ */
+export async function archiveServerCategory(
+    guild: Guild,
+    serverId: string
+): Promise<boolean> {
+    await guild.channels.fetch();
+
+    const categoryName =
+        buildCategoryDisplayName(serverId);
+
+    const archivedCategoryName =
+        buildCategoryDisplayName(serverId, true);
+
+    const category =
+        guild.channels.cache.find(
+            channel =>
+                channel.type === ChannelType.GuildCategory &&
+                channel.name === categoryName
+        ) as CategoryChannel | undefined;
+
+    if (!category) {
+        return false;
+    }
+
+    await category.setName(
+        archivedCategoryName,
+        "Roblox server shut down (serverShutdown event)"
+    );
+
+    console.log(
+        `Archived Roblox server category: ${archivedCategoryName}`
+    );
+
+    await reorderServerCategories(guild);
+
+    return true;
+}
+
+/**
  * Send a generic Roblox game event to a text channel.
  */
 export async function sendGameEvent(

@@ -15,7 +15,8 @@ import {
     logServerChannelChatMessage,
     logServerCommandUsage,
     ensureServerCommandsLogChannel,
-    ensureServerLogForum
+    ensureServerLogForum,
+    archiveServerCategory
 } from "./services/logger.js";
 import { recordModerationEvent } from "./services/moderationLog.js";
 import { notifyRobloxBanByUserId } from "./services/banNotification.js";
@@ -738,6 +739,85 @@ export function startApi(client: Client) {
                     );
 
                     return res.json({ success: true });
+                }
+
+                // ==========================================
+                // SERVER SHUTDOWN
+                //
+                // Roblox kicks everyone and dies too fast to emit
+                // every playerLeave event, so archive the category
+                // directly instead of waiting for the empty check.
+                // ==========================================
+
+                if (
+                    event.type ===
+                    "serverShutdown"
+                ) {
+
+                    if (
+                        !event.serverId ||
+                        !event.serverName
+                    ) {
+
+                        return res.status(400).json({
+                            success: false,
+                            message:
+                                "Invalid serverShutdown event payload"
+                        });
+                    }
+
+                    console.log(
+                        `Roblox server shutdown: ` +
+                        `${event.serverName} (${event.serverId})`
+                    );
+
+                    const shutdownUser = ({
+                        tag: event.username,
+                        username: event.username,
+                        id: String(
+                            event.userId ?? "unknown"
+                        )
+                    } as unknown) as User;
+
+                    const shutdownDetails = [
+                        `Reason: ${
+                            String(
+                                event.reason ??
+                                "No reason provided"
+                            )
+                        }`,
+                        `Server ID: ${event.serverId}`,
+                        `Server codename: ${
+                            getCodenameForServerId(
+                                event.serverId
+                            )
+                        }`,
+                        `Server: ${event.serverName}`,
+                        event.placeId
+                            ? `Place ID: ${event.placeId}`
+                            : null
+                    ].filter(Boolean).join("\n");
+
+                    await logServerUserEvent(
+                        guild,
+                        shutdownUser,
+                        "Server Shutdown",
+                        shutdownDetails,
+                        event.serverId,
+                        event.serverName
+                    );
+
+                    const archived =
+                        await archiveServerCategory(
+                            guild,
+                            event.serverId
+                        );
+
+                    return res.json({
+                        success: true,
+                        archived,
+                        serverId: event.serverId
+                    });
                 }
 
                 // ==========================================
