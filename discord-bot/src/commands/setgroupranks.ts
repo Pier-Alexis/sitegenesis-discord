@@ -16,6 +16,7 @@ import {
 import { getRobloxId } from "../services/bloxlinkSync.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { MAIN_GUILD_ID } from "../services/serverMsgPermissions.js";
+import { isAuthorizedRankEditor } from "../services/rankEditAuthorization.js";
 import {
     buildModerationPayload,
     fetchAssignableGroupRoles,
