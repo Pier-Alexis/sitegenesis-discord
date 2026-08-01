@@ -1,7 +1,8 @@
 import express from "express";
 import {
     Client,
-    ChannelType
+    ChannelType,
+    EmbedBuilder
 } from "discord.js";
 
 import dotenv from "dotenv";
@@ -739,6 +740,106 @@ export function startApi(client: Client) {
                     );
 
                     return res.json({ success: true });
+                }
+
+                // ==========================================
+                // ANTI-LAG SWITCH WARN
+                //
+                // Roblox flagged a player whose position jumped
+                // beyond the allowed tolerance (lag switch /
+                // teleport). Warn moderators.
+                // ==========================================
+
+                if (
+                    event.type ===
+                    "antilagWarn"
+                ) {
+
+                    const warnChannelId =
+                        config.channels.antilagWarns;
+
+                    let warnChannel;
+
+                    try {
+
+                        warnChannel =
+                            await guild.channels.fetch(
+                                warnChannelId
+                            );
+
+                    } catch (error) {
+
+                        console.error(
+                            `Failed to fetch antilag warns channel ` +
+                            `${warnChannelId}:`,
+                            error
+                        );
+                    }
+
+                    if (
+                        !warnChannel ||
+                        !warnChannel.isTextBased()
+                    ) {
+
+                        return res.status(500).json({
+                            success: false,
+                            message:
+                                "Antilag warns channel not found or not a text channel"
+                        });
+                    }
+
+                    const detailLines = [
+                        typeof event.distance === "number"
+                            ? `Distance moved: ${
+                                event.distance.toFixed(1)
+                            } studs`
+                            : null,
+                        typeof event.maxAllowed === "number"
+                            ? `Max allowed: ${
+                                event.maxAllowed.toFixed(1)
+                            } studs`
+                            : null,
+                        `Server ID: ${event.serverId}`,
+                        `Place ID: ${event.placeId ?? "unknown"}`
+                    ].filter(Boolean).join("\n");
+
+                    const warnEmbed =
+                        new EmbedBuilder()
+                            .setTitle(
+                                "⚠️ Anti-Lag Switch Detected"
+                            )
+                            .setColor(0xFF0000)
+                            .addFields(
+                                {
+                                    name: "User",
+                                    value:
+                                        `${event.username} (${event.userId})`
+                                },
+                                {
+                                    name: "Server",
+                                    value:
+                                        event.serverName
+                                },
+                                {
+                                    name: "Details",
+                                    value:
+                                        detailLines
+                                }
+                            )
+                            .setTimestamp();
+
+                    await warnChannel.send({
+                        embeds: [warnEmbed]
+                    });
+
+                    console.log(
+                        `Antilag warn sent for ${event.username} ` +
+                        `(${event.userId}) to channel ${warnChannelId}`
+                    );
+
+                    return res.json({
+                        success: true
+                    });
                 }
 
                 // ==========================================

@@ -40,7 +40,8 @@ export const config = {
         moderationLogs: process.env.MODERATION_LOGS_CHANNEL ?? "user-logs",
         radioLogs: process.env.RADIO_LOGS_CHANNEL ?? "radiochannel",
         chatLogs: process.env.CHAT_LOGS_CHANNEL ?? "chatchannel",
-        commandsLogs: process.env.COMMANDS_LOGS_CHANNEL ?? "commands"
+        commandsLogs: process.env.COMMANDS_LOGS_CHANNEL ?? "commands",
+        antilagWarns: process.env.ANTILAG_WARNS_CHANNEL ?? "1533000518761316382"
     }
 };
 

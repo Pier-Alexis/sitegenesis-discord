@@ -324,77 +324,59 @@ end
 ---------------------------------------------------------------
 
 local function checkInventory(player)
-
 	local state =
 		inventoryStates[player]
-
 	if not state then
 		return
 	end
-
-
 	local newInventory =
 		getPlayerInventory(player)
-
 	local oldInventory =
 		state.inventory
-
-
 	local changes =
 		detectInventoryChanges(
 			oldInventory,
 			newInventory
 		)
-
-
 	-----------------------------------------------------------
 	-- always update
 	-----------------------------------------------------------
-
 	state.inventory =
 		newInventory
-
-
 	-----------------------------------------------------------
 	-- no changes
 	-----------------------------------------------------------
-
 	if #changes == 0 then
 		return
 	end
-
-
 	-----------------------------------------------------------
 	-- send changes
 	-----------------------------------------------------------
-
 	for _, change in ipairs(changes) do
 
-		print(
-			"[SiteGenesis] INVENTORY CHANGE",
-			player.Name,
-			"| Action:",
-			change.action,
-			"| Item:",
-			change.item,
-			"| From:",
-			tostring(change.from),
-			"| To:",
-			tostring(change.to)
-		)
-
-
-		sendInventoryChangeEvent(
-			player,
-			change,
-			oldInventory,
-			newInventory
-		)
+		if change.action == "added" or change.action == "removed" then
+			print(
+				"[SiteGenesis] INVENTORY CHANGE",
+				player.Name,
+				"| Action:",
+				change.action,
+				"| Item:",
+				change.item,
+				"| From:",
+				tostring(change.from),
+				"| To:",
+				tostring(change.to)
+			)
+			sendInventoryChangeEvent(
+				player,
+				change,
+				oldInventory,
+				newInventory
+			)
+		end
 
 	end
-
 end
-
 
 ---------------------------------------------------------------
 -- schedule

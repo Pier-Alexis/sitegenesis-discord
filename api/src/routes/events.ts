@@ -40,7 +40,8 @@ router.post("/", async (req, res) => {
             "playerRadioChat",
             "adminCommandUsed",
             "inventoryChange",
-            "serverShutdown"
+            "serverShutdown",
+            "antilagWarn"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
@@ -58,7 +59,8 @@ router.post("/", async (req, res) => {
                 type === "playerChat" ||
                 type === "playerRadioChat" ||
                 type === "adminCommandUsed" ||
-                type === "inventoryChange"
+                type === "inventoryChange" ||
+                type === "antilagWarn"
             ) &&
             (!username || !userId || !serverId || !serverName)
         ) {
