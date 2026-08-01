@@ -39,7 +39,8 @@ router.post("/", async (req, res) => {
             "playerChat",
             "playerRadioChat",
             "adminCommandUsed",
-            "inventoryChange"
+            "inventoryChange",
+            "serverShutdown"
         ]);
 
         if (!type || !allowedTypes.has(type)) {
