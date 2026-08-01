@@ -642,8 +642,41 @@ export async function ensureModerationLogForum(
  * └── user-logs (Forum)
  *     ├── User Player1 (123)
  *     └── User Player2 (456)
+ *
+ * IMPORTANT — concurrency:
+ * This is called from api.ts on every incoming Roblox game event, and
+ * a busy server can easily fire several of these within milliseconds
+ * of each other for the same serverId. Without a lock, two concurrent
+ * calls both see "no forum exists yet" (Discord's gateway cache hasn't
+ * caught up from the first call's in-flight creation) and each create
+ * their own — resulting in two "user-logs" forums for the same server.
+ * inFlightServerLogForums makes concurrent calls for the same
+ * guild+serverId share a single creation attempt instead of racing.
  */
+const inFlightServerLogForums = new Map<string, Promise<ForumChannel>>();
+
 export async function ensureServerLogForum(
+    guild: Guild,
+    serverId: string,
+    serverName: string
+): Promise<ForumChannel> {
+    const lockKey = `${guild.id}:${serverId}`;
+
+    const inFlight = inFlightServerLogForums.get(lockKey);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const creation = resolveServerLogForum(guild, serverId, serverName).finally(() => {
+        inFlightServerLogForums.delete(lockKey);
+    });
+
+    inFlightServerLogForums.set(lockKey, creation);
+
+    return creation;
+}
+
+async function resolveServerLogForum(
     guild: Guild,
     serverId: string,
     serverName: string
@@ -700,7 +733,6 @@ export async function ensureServerLogForum(
 
     return forum as ForumChannel;
 }
-
 /**
  * Build the thread name used for a player.
  *
