@@ -243,8 +243,8 @@ async function robloxRequest<T>(
  */
 async function resolveMembershipId(
     config: WorkerConfig,
-    userId: string,
-    groupId: string
+    groupId: string,
+    userId: string
 ): Promise<string> {
     let pageToken: string | undefined;
 

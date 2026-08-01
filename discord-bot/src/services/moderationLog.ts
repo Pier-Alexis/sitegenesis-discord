@@ -22,6 +22,8 @@ export type ModerationEvent = {
     source?: ModerationEventSource;
 };
 
+const SET_GROUP_RANK_LOG_CHANNEL_ID = "1528814620305920151";
+
 function truncateFieldValue(value: string, maxLength = 1024) {
     if (value.length <= maxLength) {
         return value;
@@ -176,25 +178,6 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
     const targetUser = await guild.client.users.fetch(event.targetUserId).catch(() => null);
     const userTag = targetUser?.tag ?? event.targetUserTag;
 
-    /**
-     * targetUserId may be a Roblox user ID (e.g. from /kick) rather
-     * than a real Discord snowflake, in which case users.fetch()
-     * above will always fail and targetUser will be null.
-     *
-     * ensureUserThread() (and isMatchingUserThread() inside it)
-     * expects an object with id, tag, AND username all present.
-     * Previously this fallback only set tag/id, leaving username
-     * undefined and causing a crash in logger.ts. Build a complete
-     * synthetic user here instead.
-     */
-    const syntheticUser = targetUser ?? {
-        id: event.targetUserId,
-        tag: userTag,
-        username: userTag
-    };
-
-    const thread = await ensureUserThread(guild, syntheticUser as any);
-
     const rankFields = event.type === "setgrouprank"
         ? [
             {
@@ -229,6 +212,49 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
         )
         .setTimestamp();
 
+    /**
+     * setgrouprank / unsetgrouprank always go to one fixed channel —
+     * they don't use the per-user forum thread system, so there's no
+     * "which forum did it pick this time" ambiguity.
+     */
+    if (event.type === "setgrouprank" || event.type === "unsetgrouprank") {
+        const logChannel = await guild.client.channels.fetch(SET_GROUP_RANK_LOG_CHANNEL_ID).catch(() => null);
+
+        if (!logChannel || !logChannel.isTextBased()) {
+            throw new Error(
+                `Group-rank log channel ${SET_GROUP_RANK_LOG_CHANNEL_ID} was not found or is not text-based.`
+            );
+        }
+
+        const sentMessage = await logChannel.send({ embeds: [embed] });
+
+        return {
+            ...event,
+            id: sentMessage.id,
+            targetUserTag: userTag,
+            createdAt: sentMessage.createdAt.toISOString()
+        } as ModerationEvent;
+    }
+
+    /**
+     * targetUserId may be a Roblox user ID (e.g. from /kick) rather
+     * than a real Discord snowflake, in which case users.fetch()
+     * above will always fail and targetUser will be null.
+     *
+     * ensureUserThread() (and isMatchingUserThread() inside it)
+     * expects an object with id, tag, AND username all present.
+     * Previously this fallback only set tag/id, leaving username
+     * undefined and causing a crash in logger.ts. Build a complete
+     * synthetic user here instead.
+     */
+    const syntheticUser = targetUser ?? {
+        id: event.targetUserId,
+        tag: userTag,
+        username: userTag
+    };
+
+    const thread = await ensureUserThread(guild, syntheticUser as any);
+
     await cleanupLegacyModerationMessages(thread);
 
     const sentMessage = await thread.send({ embeds: [embed] });
@@ -246,7 +272,6 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
         createdAt: sentMessage.createdAt.toISOString()
     } as ModerationEvent;
 }
-
 export async function getModerationEvents(guild: Guild, type: ModerationEventType, targetUser?: { id: string; tag: string; username: string }) {
     const forums = await getModerationLogForums(guild);
 
