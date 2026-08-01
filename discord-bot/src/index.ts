@@ -4,6 +4,7 @@ import {
     Collection,
     Events,
     GatewayIntentBits,
+    MessageFlags,
     PermissionFlagsBits,
     type ChatInputCommandInteraction
 } from "discord.js";
@@ -30,6 +31,7 @@ import { handleCommandError } from "./services/commandErrorHandler.js";
 import { startApi } from "./api.js";
 import { notifyDiscordBanByUser } from "./services/banNotification.js";
 import { startBloxlinkAutoSync } from "./services/bloxlinkSync.js";
+import { syncMemberGroupRoles, VERIFY_BUTTON_ID } from "./services/groupRoleSync.js";
 
 const client = new Client({
     intents: [
@@ -518,6 +520,61 @@ client.on(
 client.on(
     Events.InteractionCreate,
     async interaction => {
+
+        if (interaction.isButton() && interaction.customId === VERIFY_BUTTON_ID) {
+            if (!interaction.inGuild() || !interaction.guild || !isAllowedGuild(interaction.guild.id)) {
+                return;
+            }
+
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            try {
+                const member = await interaction.guild.members.fetch(interaction.user.id);
+                const result = await syncMemberGroupRoles(member);
+
+                if (!result.linked) {
+                    await interaction.editReply({
+                        content:
+                            "⚠️ You're not linked with Bloxlink yet. Run Bloxlink's `/verify` command " +
+                            "first, then click Verify again here."
+                    });
+                    return;
+                }
+
+                if (result.assigned.length === 0) {
+                    await interaction.editReply({
+                        content:
+                            `✅ Checked your Roblox account (ID ${result.robloxUserId}) — you're not ` +
+                            "currently in any Site: 45 department, so no roles were assigned."
+                    });
+                    return;
+                }
+
+                const summary = result.assigned
+                    .map(entry => `• **${entry.roleName}** (${entry.groupName})`)
+                    .join("\n");
+
+                const removedNote = result.removedRoleNames.length
+                    ? `\n\nRemoved (no longer current): ${result.removedRoleNames.join(", ")}`
+                    : "";
+
+                await interaction.editReply({
+                    content: `✅ Synced! You now hold:\n${summary}${removedNote}`
+                });
+            } catch (error) {
+                console.error("Group verify failed:", error);
+
+                await interaction.editReply({
+                    content: "⚠️ Something went wrong while verifying. Try again in a moment."
+                });
+            }
+
+            return;
+        }
+
+        if (!interaction.isChatInputCommand()) {
+            return;
+        }
 
         if (!interaction.isChatInputCommand()) {
             return;

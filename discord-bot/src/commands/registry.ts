@@ -17,6 +17,7 @@ import * as gameunban from "./gameunban.js";
 import * as gamemsg from "./gamemsg.js";
 import * as editgameban from "./editgameban.js";
 import * as banlist from "./banlist.js";
+import * as verifysetup from "./verifysetup.js";
 
 export const commandModules = [
 	ban,
@@ -37,7 +38,8 @@ export const commandModules = [
 	gameunban,
 	gamemsg,
 	editgameban,
-	banlist
+	banlist,
+	verifysetup
 ] as const;
 
 export const commandData = commandModules.flatMap((command, index) => {
