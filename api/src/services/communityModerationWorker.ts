@@ -259,7 +259,7 @@ async function resolveMembershipId(
 
         const url =
             `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
-            `${config.groupId}/memberships?${params.toString()}`;
+            `${groupId}/memberships?${params.toString()}`;
 
         const payload = await robloxRequest<RobloxMembershipResponse>(
             config,
@@ -273,11 +273,6 @@ async function resolveMembershipId(
                 continue;
             }
 
-            /**
-             * Expected format:
-             *
-             * users/123456789
-             */
             const membershipUserId =
                 membership.user.split("/").pop();
 
@@ -318,8 +313,8 @@ async function resolveMembershipId(
  */
 async function validateRole(
     config: WorkerConfig,
-    roleId: number,
-    groupId: string
+    groupId: string,
+    roleId: number
 ): Promise<string> {
     let pageToken: string | undefined;
 
@@ -334,7 +329,7 @@ async function validateRole(
 
         const url =
             `${ROBLOX_OPEN_CLOUD_BASE}/groups/` +
-            `${config.groupId}/roles?${params.toString()}`;
+            `${groupId}/roles?${params.toString()}`;
 
         const payload = await robloxRequest<RobloxRolesResponse>(
             config,
@@ -368,7 +363,7 @@ async function validateRole(
     } while (pageToken);
 
     throw new Error(
-        `Roblox group role ${roleId} was not found in group ${config.groupId}.`
+        `Roblox group role ${roleId} was not found in group ${groupId}.`
     );
 }
 
