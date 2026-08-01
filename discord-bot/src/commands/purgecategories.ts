@@ -11,6 +11,7 @@ import {
     SlashCommandBuilder
 } from "discord.js";
 import { logDiscordCommandUsage } from "../services/logger.js";
+import { ARCHIVE_PREFIX } from "../services/serverCodenames.js";
 
 const PRIORITY_CATEGORY_NAME = "PriorityCategory";
 
@@ -19,9 +20,28 @@ const CANCEL_BUTTON_ID = "purgecategories_cancel";
 
 const CONFIRMATION_TIMEOUT_MS = 30_000;
 
+type PurgeScope = "archived" | "active" | "all";
+
+const SCOPE_LABELS: Record<PurgeScope, string> = {
+    archived: "archived",
+    active: "active",
+    all: "all"
+};
+
 export const data = new SlashCommandBuilder()
     .setName("purgecategories")
-    .setDescription("Delete every category on this server, except PriorityCategory")
+    .setDescription("Delete categories on this server, except PriorityCategory")
+    .addStringOption(option =>
+        option
+            .setName("scope")
+            .setDescription("Which categories to delete")
+            .setRequired(true)
+            .addChoices(
+                { name: "Archived only", value: "archived" },
+                { name: "Active only", value: "active" },
+                { name: "All (archived + active)", value: "all" }
+            )
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .setDMPermission(false);
 
@@ -36,6 +56,20 @@ function isProtectedCategory(categoryName: string): boolean {
         normalized === PRIORITY_CATEGORY_NAME.toLowerCase() ||
         normalized === `(archive) ${PRIORITY_CATEGORY_NAME.toLowerCase()}`
     );
+}
+
+function matchesScope(categoryName: string, scope: PurgeScope): boolean {
+    const isArchived = categoryName.startsWith(ARCHIVE_PREFIX);
+
+    if (scope === "archived") {
+        return isArchived;
+    }
+
+    if (scope === "active") {
+        return !isArchived;
+    }
+
+    return true;
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -56,17 +90,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
     }
 
+    const scope = interaction.options.getString("scope", true) as PurgeScope;
+    const scopeLabel = SCOPE_LABELS[scope];
+
     await guild.channels.fetch();
 
     const categoryList = [...guild.channels.cache.values()].filter(
         (channel): channel is CategoryChannel =>
             channel.type === ChannelType.GuildCategory &&
-            !isProtectedCategory(channel.name)
+            !isProtectedCategory(channel.name) &&
+            matchesScope(channel.name, scope)
     );
 
     if (categoryList.length === 0) {
         await interaction.reply({
-            content: `ℹ️ There are no categories to delete. Only \`${PRIORITY_CATEGORY_NAME}\` (or its archived version) exists, or the server has no categories.`,
+            content: `ℹ️ There are no ${scopeLabel} categories to delete (aside from \`${PRIORITY_CATEGORY_NAME}\`, which is always kept).`,
             flags: MessageFlags.Ephemeral
         });
         return;
@@ -98,7 +136,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.reply({
         content:
             `⚠️ **Are you sure?**\n` +
-            `This will permanently delete **${categoryList.length}** ` +
+            `This will permanently delete **${categoryList.length}** ${scopeLabel} ` +
             `categor${categoryList.length === 1 ? "y" : "ies"} (and every channel inside them), ` +
             `keeping only \`${PRIORITY_CATEGORY_NAME}\` (archived or not).\n\n` +
             `${preview}\n\n` +
@@ -135,7 +173,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     await buttonInteraction.update({
-        content: `⏳ Deleting ${categoryList.length} categories, please wait…`,
+        content: `⏳ Deleting ${categoryList.length} ${scopeLabel} categories, please wait…`,
         components: []
     });
 
@@ -168,7 +206,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const summary =
-        `✅ Deleted **${deletedCategories}** categor${deletedCategories === 1 ? "y" : "ies"} ` +
+        `✅ Deleted **${deletedCategories}** ${scopeLabel} categor${deletedCategories === 1 ? "y" : "ies"} ` +
         `and **${deletedChannels}** channel${deletedChannels === 1 ? "" : "s"}.` +
         (errors.length > 0
             ? `\n\n⚠️ ${errors.length} error(s) occurred:\n${errors.slice(0, 10).join("\n")}`
@@ -183,7 +221,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         guild,
         interaction.user,
         "purgecategories",
-        `Deleted ${deletedCategories} categories / ${deletedChannels} channels`,
+        `scope=${scope}; Deleted ${deletedCategories} categories / ${deletedChannels} channels`,
         interaction.channel && "name" in interaction.channel
             ? String(interaction.channel.name)
             : "unknown-channel"
