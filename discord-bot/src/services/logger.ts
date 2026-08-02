@@ -159,6 +159,72 @@ async function mergeDuplicateUserThreads(
     );
 }
 
+/**
+ * Memoized "forum + user -> thread id" lookups.
+ *
+ * ensureUserThreadInForum / ensureUserThread used to call
+ * fetchAllForumThreads() (a full active+archived thread listing)
+ * on every single call — meaning every chat message, join, and
+ * leave paid for a full forum scan just to find one thread.
+ *
+ * Once we've resolved a user's thread once, we remember its id.
+ * Next time, we try the cache first (free) and fall back to a
+ * single-resource fetch (cheap, one REST call) instead of listing
+ * the whole forum. We only fall back to the expensive full scan
+ * on a genuine cache miss — first-ever contact with that user in
+ * that forum, or the cached thread having been deleted out from
+ * under us.
+ */
+const resolvedUserThreadIds = new Map<string, string>();
+
+function userThreadCacheKey(forumId: string, userId: string) {
+    return `${forumId}:${userId}`;
+}
+
+async function getCachedUserThread(
+    forum: ForumChannel,
+    userId: string
+): Promise<ThreadChannel | null> {
+    const cacheKey = userThreadCacheKey(forum.id, userId);
+    const cachedThreadId = resolvedUserThreadIds.get(cacheKey);
+
+    if (!cachedThreadId) {
+        return null;
+    }
+
+    // Cheap path: gateway cache already has it, no REST call at all.
+    const cachedThread = forum.threads.cache.get(cachedThreadId);
+    if (cachedThread) {
+        return cachedThread;
+    }
+
+    // Slightly more expensive, but still O(1): fetch that one
+    // thread by id instead of listing the whole forum.
+    try {
+        const fetchedThread = await forum.threads.fetch(cachedThreadId);
+        if (fetchedThread) {
+            return fetchedThread;
+        }
+    } catch {
+        // Thread no longer exists (deleted). Fall through and
+        // treat this as a cache miss below.
+    }
+
+    resolvedUserThreadIds.delete(cacheKey);
+    return null;
+}
+
+function rememberUserThread(
+    forumId: string,
+    userId: string,
+    threadId: string
+) {
+    resolvedUserThreadIds.set(
+        userThreadCacheKey(forumId, userId),
+        threadId
+    );
+}
+
 async function fetchAllForumThreads(forum: ForumChannel) {
     const activeThreads = await forum.threads.fetchActive();
     const archivedThreads = await forum.threads.fetchArchived({
@@ -269,8 +335,6 @@ async function ensureServerTextChannel(
     serverName: string,
     channelName: string
 ) {
-    await guild.channels.fetch();
-
     const categoryName =
         buildCategoryDisplayName(serverId);
 
@@ -318,8 +382,6 @@ async function ensureServerTextChannel(
 async function ensurePriorityCategory(
     guild: Guild
 ) {
-    await guild.channels.fetch();
-
     const existingCategory =
         guild.channels.cache.find(
             channel =>
@@ -497,8 +559,6 @@ export async function archiveServerCategory(
     guild: Guild,
     serverId: string
 ): Promise<boolean> {
-    await guild.channels.fetch();
-
     const categoryName =
         buildCategoryDisplayName(serverId);
 
@@ -563,8 +623,6 @@ export async function sendGameEvent(
 export async function getModerationLogForums(
     guild: Guild
 ): Promise<ForumChannel[]> {
-
-    await guild.channels.fetch();
 
     const forumChannels = [
         ...guild.channels.cache.values()
@@ -681,8 +739,6 @@ async function resolveServerLogForum(
     serverId: string,
     serverName: string
 ): Promise<ForumChannel> {
-
-    await guild.channels.fetch();
 
     const categoryName =
         buildCategoryDisplayName(serverId);
@@ -811,6 +867,18 @@ export async function ensureUserThread(
     const forumChannel =
         await ensureModerationLogForum(guild);
 
+    const cachedThread = await getCachedUserThread(forumChannel, user.id);
+    if (cachedThread) {
+        if (cachedThread.archived) {
+            await cachedThread.setArchived(
+                false,
+                "Restore canonical user log thread"
+            ).catch(() => undefined);
+        }
+
+        return cachedThread;
+    }
+
     const allThreads = await fetchAllForumThreads(forumChannel);
 
     const threadName =
@@ -840,16 +908,22 @@ export async function ensureUserThread(
             threadName
         );
 
+        rememberUserThread(forumChannel.id, user.id, existingThread.id);
+
         return existingThread;
     }
 
-    return forumChannel.threads.create({
+    const createdThread = await forumChannel.threads.create({
         name: threadName,
         message: {
             content:
                 `📌 Activity log for ${user.tag ?? user.username ?? user.id} (${user.id})`
         }
     });
+
+    rememberUserThread(forumChannel.id, user.id, createdThread.id);
+
+    return createdThread;
 }
 
 /**
@@ -970,6 +1044,22 @@ export async function ensureUserThreadInForum(
     user: User
 ): Promise<ThreadChannel> {
 
+    const cachedThread = await getCachedUserThread(forum, user.id);
+    if (cachedThread) {
+        if (cachedThread.archived) {
+            await cachedThread.setArchived(
+                false,
+                "Restore canonical user log thread"
+            ).catch(() => undefined);
+        }
+
+        return cachedThread;
+    }
+
+    // Cache miss (first contact with this user in this forum, or
+    // the previously-known thread is gone) — fall back to the full
+    // scan, then remember the result so we never scan for this
+    // user again.
     const allThreads = await fetchAllForumThreads(forum);
 
     const threadName =
@@ -999,16 +1089,22 @@ export async function ensureUserThreadInForum(
             threadName
         );
 
+        rememberUserThread(forum.id, user.id, existingThread.id);
+
         return existingThread;
     }
 
-    return forum.threads.create({
+    const createdThread = await forum.threads.create({
         name: threadName,
         message: {
             content:
                 `📌 Activity log for ${user.tag} (${user.id})`
         }
     });
+
+    rememberUserThread(forum.id, user.id, createdThread.id);
+
+    return createdThread;
 }
 
 /**
