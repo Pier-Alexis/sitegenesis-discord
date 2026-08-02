@@ -57,6 +57,109 @@ function truncateDiscordContent(content: string) {
 }
 
 /**
+ * Batches rapid-fire plain-text log lines (chat, radio) so a busy
+ * Roblox server doesn't send one Discord message per game chat
+ * line.
+ *
+ * Discord rate-limits a channel to ~5 messages/5s. With many
+ * concurrent players, every chat line becoming its own message hits
+ * that wall constantly and everything queues up behind it — this is
+ * the actual lag ceiling, not something caching alone fixes.
+ *
+ * Instead, lines are buffered per target (a specific thread or
+ * channel) for BATCH_WINDOW_MS and flushed as one message (or a
+ * handful, if the batch is big enough to need chunking). The target
+ * itself (thread/channel resolution) is also only looked up once
+ * per flush instead of once per line, which compounds nicely with
+ * the id caches added earlier.
+ */
+const BATCH_WINDOW_MS = 1200;
+
+type BatchSendTarget = {
+    send: (payload: { content: string }) => Promise<unknown>;
+};
+
+type PendingLogBatch = {
+    lines: string[];
+    timer: ReturnType<typeof setTimeout>;
+};
+
+const pendingLogBatches = new Map<string, PendingLogBatch>();
+
+/**
+ * Packs already-formatted lines into as few Discord messages as
+ * possible, each kept under the 2000 character content limit.
+ */
+function chunkLinesForDiscord(lines: readonly string[]): string[] {
+    const chunks: string[] = [];
+    let current = "";
+
+    for (const rawLine of lines) {
+        const line = truncateDiscordContent(rawLine);
+        const candidate = current ? `${current}\n${line}` : line;
+
+        if (candidate.length > DISCORD_MAX_CONTENT_LENGTH) {
+            if (current) {
+                chunks.push(current);
+            }
+            current = line;
+        } else {
+            current = candidate;
+        }
+    }
+
+    if (current) {
+        chunks.push(current);
+    }
+
+    return chunks;
+}
+
+/**
+ * Queue a formatted line to be sent as part of a batched flush for
+ * `batchKey`. If a batch for that key is already pending, the line
+ * just joins it — no extra timer, no extra target resolution.
+ *
+ * `resolveTarget` is called exactly once per flush (not once per
+ * line) when the window closes.
+ */
+function queueBatchedLogLine(
+    batchKey: string,
+    line: string,
+    resolveTarget: () => Promise<BatchSendTarget>,
+    onError: (error: unknown) => void
+) {
+    const existingBatch = pendingLogBatches.get(batchKey);
+
+    if (existingBatch) {
+        existingBatch.lines.push(line);
+        return;
+    }
+
+    const batch: PendingLogBatch = {
+        lines: [line],
+        timer: setTimeout(() => {
+            pendingLogBatches.delete(batchKey);
+
+            void (async () => {
+                try {
+                    const target = await resolveTarget();
+                    const chunks = chunkLinesForDiscord(batch.lines);
+
+                    for (const chunk of chunks) {
+                        await target.send({ content: chunk });
+                    }
+                } catch (error) {
+                    onError(error);
+                }
+            })();
+        }, BATCH_WINDOW_MS)
+    };
+
+    pendingLogBatches.set(batchKey, batch);
+}
+
+/**
  * Some callers pass a full discord.js User, others pass a
  * lightweight synthetic object (e.g. for Roblox-only targets
  * that have no real Discord account). Only `id` is guaranteed.
@@ -1263,52 +1366,41 @@ export async function logServerUserEvent(
 /**
  * Log a Roblox chat message as plain text (no embed)
  * inside the player's server thread.
+ *
+ * Batched: rapid consecutive messages from the same player in the
+ * same server's thread are combined into one Discord message
+ * instead of one send per chat line (see queueBatchedLogLine).
  */
-export async function logServerUserChatMessage(
+export function logServerUserChatMessage(
     guild: Guild,
     user: User,
     message: string,
     serverId: string,
     serverName: string
 ) {
+    const batchKey = `user-thread:${guild.id}:${serverId}:${user.id}`;
 
-    try {
-
-        const forum =
-            await ensureServerLogForum(
-                guild,
-                serverId,
-                serverName
-            );
-
-        const thread =
-            await ensureUserThreadInForum(
-                forum,
-                user
-            );
-
-        await thread.send({
-            content: buildServerUserChatContent(
-                user.username,
-                message
-            )
-        });
-
-        console.log(
-            `Logged chat message for ${user.username} ` +
-            `in server ${serverName} (${serverId})`
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Failed to log server user chat message:",
-            error
-        );
-    }
+    queueBatchedLogLine(
+        batchKey,
+        buildServerUserChatContent(user.username, message),
+        async () => {
+            const forum = await ensureServerLogForum(guild, serverId, serverName);
+            return ensureUserThreadInForum(forum, user);
+        },
+        error => console.error("Failed to log server user chat message:", error)
+    );
 }
 
-export async function logServerChannelChatMessage(
+/**
+ * Log a Roblox chat/radio message into the server's shared plain-text
+ * log channel.
+ *
+ * Batched: this channel is shared by every player on that Roblox
+ * server, so at real player counts this is the hottest path in the
+ * whole bot — batching here is what actually keeps it under
+ * Discord's per-channel rate limit instead of just avoiding waste.
+ */
+export function logServerChannelChatMessage(
     guild: Guild,
     user: User,
     message: string,
@@ -1319,41 +1411,27 @@ export async function logServerChannelChatMessage(
         radioChannelName?: string;
     }
 ) {
+    const isRadio =
+        options?.isRadio ?? false;
 
-    try {
+    const targetChannelName =
+        isRadio
+            ? config.channels.radioLogs
+            : config.channels.chatLogs;
 
-        const isRadio =
-            options?.isRadio ?? false;
+    const batchKey = `server-channel:${guild.id}:${serverId}:${targetChannelName}`;
 
-        const targetChannelName =
-            isRadio
-                ? config.channels.radioLogs
-                : config.channels.chatLogs;
-
-        const targetChannel =
-            await ensureServerTextChannel(
-                guild,
-                serverId,
-                serverName,
-                targetChannelName
-            );
-
-        await targetChannel.send({
-            content: buildChannelChatContent(
-                user.username,
-                user.id,
-                message,
-                options?.radioChannelName
-            )
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Failed to log server channel chat message:",
-            error
-        );
-    }
+    queueBatchedLogLine(
+        batchKey,
+        buildChannelChatContent(
+            user.username,
+            user.id,
+            message,
+            options?.radioChannelName
+        ),
+        () => ensureServerTextChannel(guild, serverId, serverName, targetChannelName),
+        error => console.error("Failed to log server channel chat message:", error)
+    );
 }
 
 export async function logServerCommandUsage(
