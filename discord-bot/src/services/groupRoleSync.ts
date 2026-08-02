@@ -65,8 +65,6 @@ async function ensureManagedRole(guild: Guild, group: ManagedGroup, robloxRoleNa
         return cached;
     }
 
-    await guild.roles.fetch();
-
     const existing = guild.roles.cache.find((role: Role) => role.name === roleName);
 
     if (existing) {

@@ -329,19 +329,63 @@ export function buildChannelChatContent(
     return `${authorPrefix}${safeMessage.slice(0, truncatedMessageLength)}…`;
 }
 
+/**
+ * Memoized "server id + channel name -> channel id" and
+ * "server id -> category id" lookups.
+ *
+ * ensureServerTextChannel and ensurePriorityCategory used to do a
+ * fresh guild.channels.cache.find() scan on every single call — a
+ * chat log send, a radio log send, and a command log send each
+ * scanned the category (and sometimes the whole guild) for the
+ * same category by name. With one category per active Roblox
+ * server, that scan gets proportionally slower as more servers are
+ * live at once. Once resolved, we remember the id and go straight
+ * to a cache.get(id) — O(1) regardless of how many other
+ * categories/channels exist.
+ */
+const resolvedServerCategoryIds = new Map<string, string>();
+const resolvedServerChannelIds = new Map<string, string>();
+const resolvedPriorityAuditChannelIds = new Map<string, string>();
+
+function serverCategoryCacheKey(guildId: string, serverId: string) {
+    return `${guildId}:${serverId}`;
+}
+
+function serverChannelCacheKey(guildId: string, serverId: string, channelName: string) {
+    return `${guildId}:${serverId}:${channelName}`;
+}
+
 async function ensureServerTextChannel(
     guild: Guild,
     serverId: string,
     serverName: string,
     channelName: string
 ) {
+    const channelCacheKey = serverChannelCacheKey(guild.id, serverId, channelName);
+    const cachedChannelId = resolvedServerChannelIds.get(channelCacheKey);
+
+    if (cachedChannelId) {
+        const cachedChannel = guild.channels.cache.get(cachedChannelId) as TextChannel | undefined;
+        if (cachedChannel) {
+            return cachedChannel;
+        }
+
+        // Channel was deleted/renamed out from under us — drop the
+        // stale entry and fall through to the normal resolution path.
+        resolvedServerChannelIds.delete(channelCacheKey);
+    }
+
     const categoryName =
         buildCategoryDisplayName(serverId);
 
     const archivedCategoryName =
         buildCategoryDisplayName(serverId, true);
 
-    const category =
+    const categoryCacheKey = serverCategoryCacheKey(guild.id, serverId);
+    const cachedCategoryId = resolvedServerCategoryIds.get(categoryCacheKey);
+
+    const category = (
+        (cachedCategoryId && guild.channels.cache.get(cachedCategoryId)) ||
         guild.channels.cache.find(
             channel =>
                 channel.type === ChannelType.GuildCategory &&
@@ -349,13 +393,16 @@ async function ensureServerTextChannel(
                     channel.name === categoryName ||
                     channel.name === archivedCategoryName
                 )
-        ) as CategoryChannel | undefined;
+        )
+    ) as CategoryChannel | undefined;
 
     if (!category) {
         throw new Error(
             `Server category not found for text log channel: ${categoryName}`
         );
     }
+
+    resolvedServerCategoryIds.set(categoryCacheKey, category.id);
 
     const existingChannel =
         category.children.cache.find(
@@ -365,6 +412,7 @@ async function ensureServerTextChannel(
         ) as TextChannel | undefined;
 
     if (existingChannel) {
+        resolvedServerChannelIds.set(channelCacheKey, existingChannel.id);
         return existingChannel;
     }
 
@@ -375,6 +423,8 @@ async function ensureServerTextChannel(
             parent: category.id,
             reason: `Auto-created channel for ${channelName} logs`
         });
+
+    resolvedServerChannelIds.set(channelCacheKey, createdChannel.id);
 
     return createdChannel as TextChannel;
 }
