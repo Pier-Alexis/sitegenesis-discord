@@ -1,6 +1,7 @@
 import express from "express";
 import {
     Client,
+    CategoryChannel,
     ChannelType,
     EmbedBuilder
 } from "discord.js";
@@ -23,6 +24,7 @@ import { recordModerationEvent } from "./services/moderationLog.js";
 import { notifyRobloxBanByUserId } from "./services/banNotification.js";
 import { resolveRobloxUserIdByUsername } from "./services/robloxBridge.js";
 import { buildCategoryDisplayName, reorderServerCategories, getCodenameForServerId } from "./services/serverCodenames.js";
+import { buildServerCategoryPermissionOverwrites, ensureServerCategoryPermissions } from "./services/serverCategoryPermissions.js";
 import type { User } from "discord.js";
 
 dotenv.config();
@@ -352,6 +354,10 @@ export function startApi(client: Client) {
                             `${categoryName}`
                         );
 
+                        await ensureServerCategoryPermissions(
+                            existingCategory as CategoryChannel
+                        );
+
                         await ensureServerLogForum(
                             guild,
                             event.serverId,
@@ -402,6 +408,10 @@ export function startApi(client: Client) {
                             `${categoryName}`
                         );
 
+                        await ensureServerCategoryPermissions(
+                            archivedCategory as CategoryChannel
+                        );
+
                         await reorderServerCategories(guild);
 
                         await ensureServerLogForum(
@@ -441,7 +451,12 @@ export function startApi(client: Client) {
 
                             reason:
                                 `Created for Roblox server ` +
-                                `${event.serverId}`
+                                `${event.serverId}`,
+
+                            permissionOverwrites:
+                                buildServerCategoryPermissionOverwrites(
+                                    guild.roles.everyone.id
+                                )
                         });
 
                     console.log(

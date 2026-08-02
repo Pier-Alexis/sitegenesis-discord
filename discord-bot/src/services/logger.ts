@@ -12,6 +12,7 @@ import {
 } from "discord.js";
 
 import { buildCategoryDisplayName, reorderServerCategories } from "./serverCodenames.js";
+import { buildServerCategoryPermissionOverwrites, ensureServerCategoryPermissions } from "./serverCategoryPermissions.js";
 import { config } from "../config.js";
 
 const LOG_CHANNEL_NAME =
@@ -507,6 +508,8 @@ async function ensureServerTextChannel(
 
     resolvedServerCategoryIds.set(categoryCacheKey, category.id);
 
+    await ensureServerCategoryPermissions(category);
+
     const existingChannel =
         category.children.cache.find(
             channel =>
@@ -911,8 +914,11 @@ async function resolveServerLogForum(
     const resolvedCategory = category ?? await guild.channels.create({
         name: categoryName,
         type: ChannelType.GuildCategory,
-        reason: `Create server category for Roblox server ${serverId}`
+        reason: `Create server category for Roblox server ${serverId}`,
+        permissionOverwrites: buildServerCategoryPermissionOverwrites(guild.roles.everyone.id)
     }) as CategoryChannel;
+
+    await ensureServerCategoryPermissions(resolvedCategory);
 
     const forumName = "user-logs";
 
