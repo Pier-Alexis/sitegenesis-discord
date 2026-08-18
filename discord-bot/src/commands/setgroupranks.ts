@@ -14,7 +14,8 @@ import {
     TextInputBuilder,
     TextInputStyle
 } from "discord.js";
-import { getRobloxId, scheduleBloxlinkRankUpdate } from "../services/bloxlinkSync.js";
+import { getRobloxId } from "../services/bloxlinkSync.js";
+import { scheduleMemberGroupRoleSync } from "../services/groupRoleSync.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { MAIN_GUILD_ID } from "../services/serverMsgPermissions.js";
 import {
@@ -543,7 +544,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let bloxlinkUpdateMessage = "";
 
         if (targetDiscordUserId) {
-            scheduleBloxlinkRankUpdate(targetDiscordUserId);
+            scheduleMemberGroupRoleSync(interaction.client, MAIN_GUILD_ID, targetDiscordUserId);
             bloxlinkUpdateMessage =
                 "\nBloxlink role sync scheduled after the Roblox rank change completes.";
         }

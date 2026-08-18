@@ -1,4 +1,4 @@
-import { Guild, GuildMember, Role } from "discord.js";
+import { Client, Guild, GuildMember, Role } from "discord.js";
 import { getRobloxId } from "./bloxlinkSync.js";
 import { resolveRobloxGroupMemberships, type RobloxGroupMembership } from "./robloxBridge.js";
 
@@ -142,7 +142,7 @@ export async function syncMemberGroupRoles(member: GuildMember): Promise<GroupSy
         await member.roles.add(rolesToAdd, "Group role sync: rank/membership match");
     }
 
-    if (rolesToRemove.length) {
+    if (rolesToRemove.size) {
         await member.roles.remove(rolesToRemove, "Group role sync: no longer holds this rank/membership");
     }
 
@@ -152,4 +152,50 @@ export async function syncMemberGroupRoles(member: GuildMember): Promise<GroupSy
         assigned,
         removedRoleNames: rolesToRemove.map((role: Role) => role.name)
     };
+}
+
+const RANK_ROLE_SYNC_DELAY_MS = 15 * 1000;
+const RANK_ROLE_SYNC_RETRY_DELAY_MS = 10 * 1000;
+const RANK_ROLE_SYNC_ATTEMPTS = 3;
+
+/** Reconcile the member's Site:45 Discord roles after a queued Roblox change. */
+export function scheduleMemberGroupRoleSync(
+    client: Client,
+    guildId: string,
+    discordUserId: string
+): void {
+    setTimeout(() => {
+        void (async () => {
+            for (let attempt = 1; attempt <= RANK_ROLE_SYNC_ATTEMPTS; attempt++) {
+                try {
+                    const guild = await client.guilds.fetch(guildId);
+                    const member = await guild.members.fetch(discordUserId);
+                    const result = await syncMemberGroupRoles(member);
+
+                    if (result.linked) {
+                        console.log(
+                            `[Group role sync] Updated ${discordUserId} ` +
+                            `after rank change on attempt ${attempt}`
+                        );
+                        return;
+                    }
+                } catch (error) {
+                    console.error(
+                        `[Group role sync] Rank-change sync attempt ${attempt} failed ` +
+                        `for ${discordUserId}:`,
+                        error
+                    );
+                }
+
+                if (attempt < RANK_ROLE_SYNC_ATTEMPTS) {
+                    await new Promise(resolve => setTimeout(resolve, RANK_ROLE_SYNC_RETRY_DELAY_MS));
+                }
+            }
+
+            console.warn(
+                `[Group role sync] Rank-change sync failed after ` +
+                `${RANK_ROLE_SYNC_ATTEMPTS} attempts for ${discordUserId}`
+            );
+        })();
+    }, RANK_ROLE_SYNC_DELAY_MS);
 }

@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { resolveDiscordIdFromRobloxUserId } from "../services/banNotification.js";
-import { scheduleBloxlinkRankUpdate } from "../services/bloxlinkSync.js";
+import { scheduleMemberGroupRoleSync } from "../services/groupRoleSync.js";
 import { buildModerationPayload, forwardModerationToBackend, resolveRobloxRankContext } from "../services/robloxBridge.js";
 export const data = new SlashCommandBuilder()
     .setName("setgrouprank")
@@ -82,7 +82,7 @@ export async function execute(interaction) {
             console.error("Failed to resolve Discord user for Bloxlink rank sync", error);
         }
         if (targetDiscordUserId) {
-            scheduleBloxlinkRankUpdate(targetDiscordUserId);
+            scheduleMemberGroupRoleSync(interaction.client, "1515795950218510468", targetDiscordUserId);
         }
         const newRankLabel = rankContext.newRankName
             ? `${rankContext.newRankName} (Role ID ${roleId})`
