@@ -14,6 +14,8 @@ import {
 import { buildCategoryDisplayName, reorderServerCategories } from "./serverCodenames.js";
 import { buildServerCategoryPermissionOverwrites, ensureServerCategoryPermissions } from "./serverCategoryPermissions.js";
 import { config } from "../config.js";
+import { getRobloxId } from "./bloxlinkSync.js";
+import { resolveDiscordIdFromRobloxUserId } from "./banNotification.js";
 
 const LOG_CHANNEL_NAME =
     config.channels.moderationLogs || "user-logs";
@@ -478,6 +480,86 @@ export function buildChannelChatContent(
 const resolvedServerCategoryIds = new Map<string, string>();
 const resolvedServerChannelIds = new Map<string, string>();
 const resolvedPriorityAuditChannelIds = new Map<string, string>();
+
+/**
+ * Cache for resolved user IDs (Discord ↔ Roblox).
+ *
+ * When a Discord user triggers a log event, we resolve their linked
+ * Roblox ID via Bloxlink so both Discord and Roblox events land in
+ * the same forum thread. The reverse lookup (Roblox → Discord) is
+ * used for Roblox game events so they also converge on one thread.
+ *
+ * Entries expire after RESOLVED_ID_CACHE_TTL_MS to avoid stale data
+ * if a user unlinks their account.
+ */
+const RESOLVED_ID_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const resolvedIdCache = new Map<string, { resolvedId: string; expiresAt: number }>();
+
+function getCachedResolvedId(inputId: string): string | null {
+    const entry = resolvedIdCache.get(inputId);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+        resolvedIdCache.delete(inputId);
+        return null;
+    }
+    return entry.resolvedId;
+}
+
+function setCachedResolvedId(inputId: string, resolvedId: string) {
+    resolvedIdCache.set(inputId, {
+        resolvedId,
+        expiresAt: Date.now() + RESOLVED_ID_CACHE_TTL_MS
+    });
+}
+
+/**
+ * Given a user (Discord or Roblox synthetic), resolve the best
+ * canonical ID for forum thread naming so Discord and Roblox
+ * events for the same person converge on one thread.
+ *
+ * `source` determines lookup direction:
+ * - "discord" → Bloxlink: Discord ID → Roblox ID
+ * - "roblox"  → Bloxlink/RoVer: Roblox ID → Discord ID
+ *
+ * Falls back to the original user ID if no link is found.
+ * The original user object is never mutated.
+ */
+export async function resolveThreadUser(
+    user: ThreadUserLike,
+    source: "discord" | "roblox"
+): Promise<ThreadUserLike> {
+    const inputId = user.id;
+
+    const cached = getCachedResolvedId(inputId);
+    if (cached && cached !== inputId) {
+        return { ...user, id: cached };
+    }
+
+    if (source === "discord") {
+        try {
+            const robloxId = await getRobloxId(inputId);
+            if (robloxId) {
+                setCachedResolvedId(inputId, robloxId);
+                return { ...user, id: robloxId };
+            }
+        } catch {
+            // Bloxlink unavailable — fall through to original ID
+        }
+    } else {
+        try {
+            const discordId = await resolveDiscordIdFromRobloxUserId(inputId);
+            if (discordId) {
+                setCachedResolvedId(inputId, discordId);
+                return { ...user, id: discordId };
+            }
+        } catch {
+            // Reverse lookup unavailable — fall through
+        }
+    }
+
+    return user;
+}
 
 function serverCategoryCacheKey(guildId: string, serverId: string) {
     return `${guildId}:${serverId}`;
@@ -1120,15 +1202,19 @@ export async function logUserEvent(
     guild: Guild,
     user: User,
     event: string,
-    details: string
+    details: string,
+    source: "discord" | "roblox" = "discord"
 ) {
 
     try {
 
+        const resolvedUser =
+            await resolveThreadUser(user, source);
+
         const thread =
             await ensureUserThread(
                 guild,
-                user
+                resolvedUser
             );
 
         const embed =
@@ -1174,10 +1260,13 @@ export async function logMessageEvent(
 
     try {
 
+        const resolvedUser =
+            await resolveThreadUser(user, "discord");
+
         const thread =
             await ensureUserThread(
                 guild,
-                user
+                resolvedUser
             );
 
         const embed =

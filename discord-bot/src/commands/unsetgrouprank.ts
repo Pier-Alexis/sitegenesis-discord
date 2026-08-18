@@ -77,7 +77,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             guildId: guild.id,
             guildName: guild.name,
             targetUserId: rankContext.robloxUserId ?? `roblox:${robloxUsername}`,
-            targetUserTag: `${robloxUsername} (Roblox)`,
+            targetUserTag: robloxUsername,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
             reason: `Removed group role. ${reason}`,

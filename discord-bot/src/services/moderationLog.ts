@@ -1,10 +1,5 @@
-import { ChannelType, EmbedBuilder, type ForumChannel, type Guild, type Message, type ThreadChannel } from "discord.js";
-import { ensureUserThread, ensureUserThreadInForum, findUserThread, getModerationLogForums, sendPriorityAuditEmbed } from "./logger.js";
-
-/** /setgrouprank and /unsetgrouprank logs always go inside this forum
- *  channel (as a per-user thread, same as everywhere else) — no
- *  guild-dependent forum lookup. */
-const SET_GROUP_RANK_LOG_CHANNEL_ID = "1528814620305920151";
+import { EmbedBuilder, type Guild, type Message, type ThreadChannel } from "discord.js";
+import { ensureUserThread, findUserThread, getModerationLogForums, sendPriorityAuditEmbed } from "./logger.js";
 
 export type ModerationEventType = "ban" | "unban" | "mute" | "unmute" | "warning" | "softban" | "setgrouprank" | "unsetgrouprank" | "kick";
 
@@ -181,10 +176,17 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
     const targetUser = await guild.client.users.fetch(event.targetUserId).catch(() => null);
     const userTag = targetUser?.tag ?? event.targetUserTag;
 
+    /**
+     * Strip trailing "(<digits>)" from the tag so the thread name
+     * doesn't end up with the Roblox ID doubled, e.g.
+     * "User Name (123) (123)" → "User Name (123)".
+     */
+    const cleanUsername = (userTag ?? "").replace(/\s*\(\d+\)\s*$/, "").trim() || userTag;
+
     const syntheticUser = targetUser ?? {
         id: event.targetUserId,
         tag: userTag,
-        username: userTag
+        username: cleanUsername
     };
 
     const rankFields = event.type === "setgrouprank"
@@ -220,29 +222,6 @@ export async function recordModerationEvent(guild: Guild, event: Omit<Moderation
             { name: "Guild", value: event.guildName }
         )
         .setTimestamp();
-
-    if (event.type === "setgrouprank" || event.type === "unsetgrouprank") {
-        const logForum = await guild.client.channels.fetch(SET_GROUP_RANK_LOG_CHANNEL_ID).catch(() => null);
-
-        if (!logForum || logForum.type !== ChannelType.GuildForum) {
-            throw new Error(
-                `Group-rank log channel ${SET_GROUP_RANK_LOG_CHANNEL_ID} was not found or is not a forum channel.`
-            );
-        }
-
-        const thread = await ensureUserThreadInForum(logForum as ForumChannel, syntheticUser as any);
-
-        await cleanupLegacyModerationMessages(thread);
-
-        const sentMessage = await thread.send({ embeds: [embed] });
-
-        return {
-            ...event,
-            id: sentMessage.id,
-            targetUserTag: userTag,
-            createdAt: sentMessage.createdAt.toISOString()
-        } as ModerationEvent;
-    }
 
     const thread = await ensureUserThread(guild, syntheticUser as any);
 

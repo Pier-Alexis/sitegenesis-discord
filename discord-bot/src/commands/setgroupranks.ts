@@ -546,7 +546,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             guildId: guild.id,
             guildName: guild.name,
             targetUserId: target.robloxUserId,
-            targetUserTag: `${target.label} (${target.robloxUserId})`,
+            targetUserTag: target.label,
             moderatorId: interaction.user.id,
             moderatorTag: interaction.user.tag,
             reason: `Set role to ${newRankLabel} in ${selectedMembership.groupName}. ${reason}`,
