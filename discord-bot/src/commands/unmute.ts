@@ -24,21 +24,31 @@ export const data = new SlashCommandBuilder()
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false);
 
+async function respond(
+    interaction: ChatInputCommandInteraction,
+    content: string,
+    ephemeral = false
+) {
+    if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({ content });
+        return;
+    }
+
+    await interaction.reply({
+        content,
+        ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {})
+    });
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.inGuild()) {
-        await interaction.reply({
-            content: "⚠️ This command can only be used in a server.",
-            flags: MessageFlags.Ephemeral
-        });
+        await respond(interaction, "⚠️ This command can only be used in a server.", true);
         return;
     }
 
     const guild = interaction.guild;
     if (!guild) {
-        await interaction.reply({
-            content: "⚠️ I could not access this server information.",
-            flags: MessageFlags.Ephemeral
-        });
+        await respond(interaction, "⚠️ I could not access this server information.", true);
         return;
     }
 
@@ -54,10 +64,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
 
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(robloxUsername)) {
-        await interaction.reply({
-            content: "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
-            flags: MessageFlags.Ephemeral
-        });
+        await respond(
+            interaction,
+            "⚠️ Enter a valid Roblox username (3-20 letters, numbers, or underscores).",
+            true
+        );
         return;
     }
 
@@ -69,10 +80,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
 
     if (!robloxUserId) {
-        await interaction.reply({
-            content: "⚠️ I could not find that Roblox username.",
-            flags: MessageFlags.Ephemeral
-        });
+        await respond(interaction, "⚠️ I could not find that Roblox username.", true);
         return;
     }
 
@@ -106,18 +114,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             reason
         });
 
-        await interaction.reply({
-            content: `✅ Queued an in-game unmute for ${robloxUsername}`
-        });
+        await respond(interaction, `✅ Queued an in-game unmute for ${robloxUsername}`);
     } catch (error) {
         console.error("[unmute] Failed to queue Roblox unmute", {
             robloxUsername,
             robloxUserId,
             error
         });
-        await interaction.reply({
-            content: "⚠️ Failed to queue the unmute action.",
-            flags: MessageFlags.Ephemeral
-        });
+        await respond(interaction, "⚠️ Failed to queue the unmute action.", true);
     }
 }
