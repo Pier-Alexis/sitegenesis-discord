@@ -14,7 +14,7 @@ import {
     TextInputBuilder,
     TextInputStyle
 } from "discord.js";
-import { getRobloxId } from "../services/bloxlinkSync.js";
+import { getRobloxId, updateBloxlinkUser } from "../services/bloxlinkSync.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { MAIN_GUILD_ID } from "../services/serverMsgPermissions.js";
 import {
@@ -219,6 +219,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await inputModalSubmission.deferUpdate();
 
     let target: ResolvedTarget;
+    let targetDiscordUserId: string | null = null;
 
     if (usingDiscordSource) {
         const rawInput = inputModalSubmission.fields.getTextInputValue(DISCORD_INPUT_FIELD_ID).trim();
@@ -243,6 +244,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
             return;
         }
 
+        targetDiscordUserId = member.id;
         target = { robloxUserId, label: member.user.tag };
     } else {
         const robloxUsername = inputModalSubmission.fields.getTextInputValue(ROBLOX_INPUT_FIELD_ID).trim();
@@ -538,6 +540,22 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     try {
         await forwardModerationToBackend(payload);
 
+        let bloxlinkUpdateMessage = "";
+
+        if (targetDiscordUserId) {
+            let update = null;
+
+            try {
+                update = await updateBloxlinkUser(targetDiscordUserId);
+            } catch (error) {
+                console.error("Failed to update Bloxlink after rank queue", error);
+            }
+
+            bloxlinkUpdateMessage = update
+                ? "\nBloxlink was automatically updated for the main Discord server."
+                : "\n⚠️ The rank change was queued, but Bloxlink could not be updated automatically.";
+        }
+
         const currentRankLabel = `${selectedMembership.groupName}: ${selectedMembership.roleName} (Rank ${selectedMembership.roleRank})`;
         const newRankLabel = `${selectedRole.name} (Role ID ${selectedRole.id})`;
 
@@ -557,7 +575,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await interaction.editReply({
             content:
                 `✅ Queued rank change for ${target.label} to **${selectedRole.name}** ` +
-                `in **${selectedMembership.groupName}**.\nReason: ${reason}`,
+                `in **${selectedMembership.groupName}**.\nReason: ${reason}` +
+                bloxlinkUpdateMessage,
             components: []
         });
     } catch (error) {
