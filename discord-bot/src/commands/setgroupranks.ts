@@ -14,7 +14,7 @@ import {
     TextInputBuilder,
     TextInputStyle
 } from "discord.js";
-import { getRobloxId, updateBloxlinkUser } from "../services/bloxlinkSync.js";
+import { getRobloxId, scheduleBloxlinkRankUpdate } from "../services/bloxlinkSync.js";
 import { recordModerationEvent } from "../services/moderationLog.js";
 import { MAIN_GUILD_ID } from "../services/serverMsgPermissions.js";
 import {
@@ -543,17 +543,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         let bloxlinkUpdateMessage = "";
 
         if (targetDiscordUserId) {
-            let update = null;
-
-            try {
-                update = await updateBloxlinkUser(targetDiscordUserId);
-            } catch (error) {
-                console.error("Failed to update Bloxlink after rank queue", error);
-            }
-
-            bloxlinkUpdateMessage = update
-                ? "\nBloxlink was automatically updated for the main Discord server."
-                : "\n⚠️ The rank change was queued, but Bloxlink could not be updated automatically.";
+            scheduleBloxlinkRankUpdate(targetDiscordUserId);
+            bloxlinkUpdateMessage =
+                "\nBloxlink role sync scheduled after the Roblox rank change completes.";
         }
 
         const currentRankLabel = `${selectedMembership.groupName}: ${selectedMembership.roleName} (Rank ${selectedMembership.roleRank})`;

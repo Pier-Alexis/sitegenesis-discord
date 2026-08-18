@@ -231,6 +231,9 @@ export async function findUserThread(guild, user) {
         await forum.threads.fetch();
         const matchingThread = forum.threads.cache.find(thread => {
             const name = thread.name?.toLowerCase() ?? "";
+            if (name.includes(`(${user.id.toLowerCase()})`)) {
+                return true;
+            }
             const nameMatches = candidates.some(candidate => {
                 const normalizedCandidate = candidate.toLowerCase();
                 return (name === normalizedCandidate ||
@@ -259,7 +262,10 @@ export async function ensureUserThread(guild, user) {
     const forumChannel = await ensureModerationLogForum(guild);
     await forumChannel.threads.fetch();
     const threadName = buildUserThreadName(user);
-    const existingThread = forumChannel.threads.cache.find(thread => thread.name === threadName);
+    const existingThread = forumChannel.threads.cache.find(thread =>
+        thread.name === threadName ||
+        thread.name?.toLowerCase().includes(`(${user.id.toLowerCase()})`)
+    );
     if (existingThread) {
         return existingThread;
     }

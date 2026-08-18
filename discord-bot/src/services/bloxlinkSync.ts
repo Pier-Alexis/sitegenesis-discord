@@ -10,6 +10,9 @@ const BLOXLINK_API_KEY = process.env.BLOXLINK_API_KEY;
 const BLOXLINK_GUILD_ID = process.env.BLOXLINK_GUILD_ID;
 
 const SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const RANK_UPDATE_DELAY = 15 * 1000;
+const RANK_UPDATE_RETRY_DELAY = 10 * 1000;
+const RANK_UPDATE_ATTEMPTS = 3;
 
 // Delay between each user.
 // Avoid sending too many requests simultaneously.
@@ -468,4 +471,37 @@ async function runBloxlinkSync(
 	}
 
 	await syncBloxlinkGuild(guild);
+}
+
+/**
+ * Updates Bloxlink after the Roblox moderation worker has had time to
+ * apply a queued group-rank change. Bloxlink can return a transient 500
+ * while the Roblox membership is still being updated, so retry briefly.
+ */
+export function scheduleBloxlinkRankUpdate(discordUserId: string): void {
+
+	setTimeout(() => {
+		void (async () => {
+			for (let attempt = 1; attempt <= RANK_UPDATE_ATTEMPTS; attempt++) {
+				const update = await updateBloxlinkUser(discordUserId);
+
+				if (update) {
+					console.log(
+						`[Bloxlink sync] Rank-change update succeeded for ` +
+						`${discordUserId} on attempt ${attempt}`
+					);
+					return;
+				}
+
+				if (attempt < RANK_UPDATE_ATTEMPTS) {
+					await sleep(RANK_UPDATE_RETRY_DELAY);
+				}
+			}
+
+			console.warn(
+				`[Bloxlink sync] Rank-change update failed after ` +
+				`${RANK_UPDATE_ATTEMPTS} attempts for ${discordUserId}`
+			);
+		})();
+	}, RANK_UPDATE_DELAY);
 }

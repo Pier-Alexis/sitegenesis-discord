@@ -244,6 +244,10 @@ function isMatchingUserThread(
 ) {
     const name = thread.name?.toLowerCase() ?? "";
 
+    if (name.includes(`(${user.id.toLowerCase()})`)) {
+        return true;
+    }
+
     const candidates = getUserThreadCandidates(user).map(candidate => candidate.toLowerCase());
 
     const nameMatches = candidates.some(candidate => (
