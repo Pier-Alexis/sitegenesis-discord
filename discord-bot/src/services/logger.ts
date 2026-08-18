@@ -83,6 +83,8 @@ type BatchSendTarget = {
 type PendingLogBatch = {
     lines: string[];
     timer: ReturnType<typeof setTimeout>;
+    resolveTarget: () => Promise<BatchSendTarget>;
+    onError: (error: unknown) => void;
 };
 
 const pendingLogBatches = new Map<string, PendingLogBatch>();
@@ -117,6 +119,27 @@ function chunkLinesForDiscord(lines: readonly string[]): string[] {
 }
 
 /**
+ * Sends the buffered lines for a pending batch right now (used both by
+ * the normal BATCH_WINDOW_MS timer and by flushBatchedLogLine's
+ * on-demand early flush).
+ */
+async function flushBatch(batchKey: string, batch: PendingLogBatch) {
+    pendingLogBatches.delete(batchKey);
+    clearTimeout(batch.timer);
+
+    try {
+        const target = await batch.resolveTarget();
+        const chunks = chunkLinesForDiscord(batch.lines);
+
+        for (const chunk of chunks) {
+            await target.send({ content: chunk });
+        }
+    } catch (error) {
+        batch.onError(error);
+    }
+}
+
+/**
  * Queue a formatted line to be sent as part of a batched flush for
  * `batchKey`. If a batch for that key is already pending, the line
  * just joins it — no extra timer, no extra target resolution.
@@ -139,25 +162,30 @@ function queueBatchedLogLine(
 
     const batch: PendingLogBatch = {
         lines: [line],
-        timer: setTimeout(() => {
-            pendingLogBatches.delete(batchKey);
-
-            void (async () => {
-                try {
-                    const target = await resolveTarget();
-                    const chunks = chunkLinesForDiscord(batch.lines);
-
-                    for (const chunk of chunks) {
-                        await target.send({ content: chunk });
-                    }
-                } catch (error) {
-                    onError(error);
-                }
-            })();
-        }, BATCH_WINDOW_MS)
+        resolveTarget,
+        onError,
+        timer: setTimeout(() => void flushBatch(batchKey, batch), BATCH_WINDOW_MS)
     };
 
     pendingLogBatches.set(batchKey, batch);
+}
+
+/**
+ * Immediately sends any pending batched lines for `batchKey`, bypassing
+ * the BATCH_WINDOW_MS wait. Used before posting a message that must be
+ * guaranteed to land after any already-queued lines for the same
+ * target — e.g. a "Player Left" embed, so a chat line queued moments
+ * before the player left can't flush afterward and silently become the
+ * thread's new last message (which blocks archiveServerCategoryIfEmpty).
+ */
+export async function flushBatchedLogLine(batchKey: string) {
+    const batch = pendingLogBatches.get(batchKey);
+
+    if (!batch) {
+        return;
+    }
+
+    await flushBatch(batchKey, batch);
 }
 
 /**
@@ -1325,6 +1353,16 @@ export async function logServerUserEvent(
                 forum,
                 user
             );
+
+        if (isPlayerLeftEmbedTitle(event)) {
+            // Guarantee ordering: any chat line queued right before this
+            // player left gets sent first, so the Left embed is always
+            // the thread's true last message — otherwise a batched chat
+            // line could flush moments AFTER this embed and silently
+            // block archiveServerCategoryIfEmpty below (the last message
+            // in the thread would no longer be a "Player Left" embed).
+            await flushBatchedLogLine(`user-thread:${guild.id}:${serverId}:${user.id}`);
+        }
 
         const embed =
             new EmbedBuilder()
